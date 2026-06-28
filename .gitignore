@@ -1,6 +1,9 @@
-# Dependencies — install locally; never commit
-/node_modules
+# Dependencies — vendor installed via Composer on the server
 /vendor
+
+# public/build is committed for Hostinger (no Node on server). node_modules stays local only.
+# /public/build
+/node_modules
 
 # Environment & secrets
 .env
@@ -8,8 +11,7 @@
 !.env.example
 /auth.json
 
-# Laravel build & runtime
-/public/build
+# Laravel runtime
 /public/hot
 /public/storage
 /storage/*.key
