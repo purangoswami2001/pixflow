@@ -117,6 +117,63 @@ php artisan key:generate
 
 Edit `.env` — at minimum set `APP_URL`, database credentials, and any AI/social API keys you need.
 
+**Hostinger — split folder** (`pixflow/` Laravel root + `public_html/` web root):
+
+```
+domains/pixflow.jinsta.com/
+├── pixflow/          ← git clone here (app, vendor, .env)
+└── public_html/      ← subdomain document root (index.php, css, js, build)
+```
+
+Subdomain document root in hPanel: `.../domains/pixflow.jinsta.com/public_html`
+
+`pixflow/.env`:
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://pixflow.jinsta.com
+APP_BASE_PATH=
+ASSET_URL="${APP_URL}"
+```
+
+After every `git pull` in `pixflow/`, **sync public assets to public_html** (git only updates `pixflow/`, not `public_html/`):
+
+```bash
+cd ~/domains/pixflow.jinsta.com/pixflow
+git pull
+composer install --no-dev --optimize-autoloader
+bash deploy/hostinger/sync-public.sh
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
+php artisan migrate --force
+```
+
+`sync-public.sh` copies `css/pixflow.css` (~100 KB with Tailwind), `js/`, `build/`, images, `.htaccess`, and the Hostinger `index.php`.
+
+**Verify CSS:** open `https://pixflow.jinsta.com/css/pixflow.css` — file must be **~100 KB** and start with `*,:after,:before{--tw-`. If it is ~60 KB with many lines, you still have the old file without Tailwind.
+
+**Hostinger — document root = `pixflow/public`** (simpler, no sync script):
+
+```env
+APP_URL=https://yourdomain.com
+APP_BASE_PATH=
+ASSET_URL="${APP_URL}"
+APP_DEBUG=false
+```
+
+Use the default `public/.htaccess` (no `RewriteBase`).
+
+```bash
+git pull
+composer install --no-dev --optimize-autoloader
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
+php artisan storage:link
+```
+
 **WAMP / subdirectory deploy** (e.g. `http://localhost/pixflow/public`):
 
 ```env
@@ -125,7 +182,7 @@ APP_BASE_PATH=/pixflow/public
 ASSET_URL="${APP_URL}"
 ```
 
-Ensure `public/.htaccess` has `RewriteBase /pixflow/public` (or your folder name).
+Copy the WAMP htaccess: `cp public/.htaccess.wamp public/.htaccess` (or set `RewriteBase /pixflow/public` manually).
 
 For **ngrok**, use your tunnel URL with the same path and set `SESSION_SECURE_COOKIE=true`.
 

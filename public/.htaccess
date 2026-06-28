@@ -5,8 +5,8 @@
 
     RewriteEngine On
 
-    # WAMP subdirectory — required so /admin/settings etc. reach index.php
-    RewriteBase /pixflow/public
+    # Production (Hostinger, domain root → public/): leave RewriteBase unset or use "/".
+    # WAMP subdirectory: copy public/.htaccess.wamp over this file (see README).
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
