@@ -1,0 +1,48 @@
+# Dependencies — install locally; never commit
+/node_modules
+/vendor
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+/auth.json
+
+# Laravel build & runtime
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+
+# Logs & caches
+*.log
+.phpunit.result.cache
+.phpunit.cache
+
+# NPM / Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+.yarn/
+
+# IDE & editor
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpactor.json
+/.vscode
+/.zed
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local dev tooling
+/public/fonts-manifest.dev.json
+Homestead.json
+Homestead.yaml
+_ide_helper.php
