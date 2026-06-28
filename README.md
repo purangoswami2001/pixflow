@@ -106,6 +106,8 @@ npm install
 npm run build
 ```
 
+`npm run build` compiles **Tailwind into `public/css/pixflow.css`** (required — the app does not use the Tailwind CDN in production) and builds Vite assets for the welcome page.
+
 ### 2. Environment
 
 ```bash

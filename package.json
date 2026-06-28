@@ -4,7 +4,8 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "npm run build:css && vite build",
+        "build:css": "tailwindcss -i ./resources/css/pixflow.css -o ./public/css/pixflow.css --minify",
         "dev": "vite"
     },
     "devDependencies": {

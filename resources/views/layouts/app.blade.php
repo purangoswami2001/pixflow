@@ -8,33 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
     <link href="{{ asset('css/pixflow.css') }}" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#004ac6',
-                        'primary-container': '#2563eb',
-                        'on-primary': '#ffffff',
-                        'on-surface': '#131b2e',
-                        'on-surface-variant': '#434655',
-                        outline: '#737686',
-                        'outline-variant': '#c3c6d7',
-                        'surface-container-low': '#f2f3ff',
-                        'surface-container-lowest': '#ffffff',
-                        error: '#ba1a1a',
-                        'error-container': '#ffdad6',
-                        secondary: '#4648d4',
-                        'secondary-container': '#6063ee',
-                    },
-                    fontFamily: {
-                        display: ['Hanken Grotesk', 'sans-serif'],
-                    },
-                },
-            },
-        };
-    </script>
     @stack('styles')
 </head>
 <body class="min-h-screen">
