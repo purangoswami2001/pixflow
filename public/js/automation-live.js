@@ -5,6 +5,7 @@
 (function () {
     const STATUS_CLASSES = {
         completed: 'pp-status-badge--success',
+        partial: 'pp-status-badge--running',
         failed: 'pp-status-badge--danger',
         running: 'pp-status-badge--running',
     };
@@ -90,6 +91,23 @@
             badge.className = `pp-status-badge ${itemStatusClass(item.status)}`;
         }
 
+        let retryChip = article.querySelector('[data-item-retry-chip]');
+        const retryCount = Number(item.retry_count || 0);
+        if (retryCount > 0 && (item.status === 'post_created' || item.status === 'failed')) {
+            const label = item.status === 'post_created'
+                ? `${retryCount} ${retryCount === 1 ? 'retry' : 'retries'}`
+                : `failed after ${retryCount} ${retryCount === 1 ? 'retry' : 'retries'}`;
+            if (!retryChip) {
+                retryChip = document.createElement('span');
+                retryChip.setAttribute('data-item-retry-chip', '');
+                badge?.parentElement?.appendChild(retryChip);
+            }
+            retryChip.textContent = label;
+            retryChip.className = `text-[10px] font-semibold uppercase tracking-wide ${item.status === 'post_created' ? 'text-[#737686]' : 'text-red-600'}`;
+        } else if (retryChip) {
+            retryChip.remove();
+        }
+
         const actions = article.querySelector('[data-item-actions]');
         if (!actions) return;
 
@@ -116,7 +134,7 @@
     function updateRunSummary(run) {
         const statusEl = document.querySelector('[data-run-status]');
         if (statusEl) {
-            statusEl.textContent = run.status;
+            statusEl.textContent = run.status === 'completed' ? 'success' : run.status;
             statusEl.className = `pp-status-badge ${STATUS_CLASSES[run.status] || 'pp-status-badge--muted'} text-sm px-3 py-1`;
         }
 

@@ -5,29 +5,29 @@
          data-retry-url="{{ url('admin/automation/run-items') }}"
          data-post-edit-url="{{ url('posts') }}"
          data-logs-url="{{ route('admin.automation.logs') }}">
-        <x-pp-page-header :title="'Run #' . $run->id" :description="$run->campaign?->name">
-            <x-slot name="breadcrumb">
-                <a href="{{ route('admin.automation.runs') }}" class="hover:text-[#004ac6]">Pipeline</a>
-                <span>/</span><span class="text-[#004ac6]">#{{ $run->id }}</span>
-            </x-slot>
-            <x-slot name="actions">
-                <span class="pp-live-indicator" id="pp-run-live-indicator" title="Auto-updating">
-                    <span class="pp-live-indicator-dot"></span>
-                    Live
-                </span>
-                <a href="{{ route('admin.automation.logs', ['run_id' => $run->id]) }}" class="pp-btn-secondary text-sm py-2">
-                    <span class="material-symbols-outlined text-[18px]">terminal</span>
-                    AI Logs
-                </a>
-            </x-slot>
-        </x-pp-page-header>
         @include('admin.automation._nav')
+
+        <div class="pp-auto-toolbar">
+            <a href="{{ route('admin.automation.runs') }}" class="pp-btn-secondary text-sm py-2">
+                <span class="material-symbols-outlined text-[18px]">arrow_back</span>
+                Pipeline
+            </a>
+            <span class="pp-live-indicator" id="pp-run-live-indicator" title="Auto-updating">
+                <span class="pp-live-indicator-dot"></span>
+                Live
+            </span>
+            <a href="{{ route('admin.automation.logs', ['run_id' => $run->id]) }}" class="pp-btn-secondary text-sm py-2">
+                <span class="material-symbols-outlined text-[18px]">terminal</span>
+                AI Logs
+            </a>
+        </div>
 
         @php
             $pct = $run->planned_count > 0 ? round(($run->created_count / $run->planned_count) * 100) : 0;
             $statusClass = match($run->status) {
                 'completed' => 'pp-status-badge--success',
                 'failed' => 'pp-status-badge--danger',
+                'partial' => 'pp-status-badge--running',
                 'running' => 'pp-status-badge--running',
                 default => 'pp-status-badge--muted',
             };
@@ -36,7 +36,7 @@
         <div class="pp-card p-5 mb-6 bg-gradient-to-r from-[#faf8ff] to-white" id="pp-run-summary">
             <div class="flex flex-wrap justify-between gap-4 items-center mb-4">
                 <div class="flex items-center gap-3">
-                    <span class="pp-status-badge {{ $statusClass }} text-sm px-3 py-1" data-run-status>{{ $run->status }}</span>
+                    <span class="pp-status-badge {{ $statusClass }} text-sm px-3 py-1" data-run-status>{{ $run->status === 'completed' ? 'success' : $run->status }}</span>
                     <span class="text-sm text-[#737686]" data-run-started>Started {{ $run->started_at?->diffForHumans() ?? 'not yet' }}</span>
                 </div>
                 <p class="font-display font-bold text-2xl text-[#131b2e]">

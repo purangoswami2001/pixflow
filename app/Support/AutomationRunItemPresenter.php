@@ -35,7 +35,10 @@ class AutomationRunItemPresenter
             'platform' => $item->platform,
             'topic_type' => $item->topic_type,
             'status' => $item->status,
-            'status_label' => str_replace('_', ' ', $item->status),
+            'status_label' => $item->status === 'post_created'
+                ? 'success'
+                : str_replace('_', ' ', $item->status),
+            'retry_count' => (int) ($item->metadata['retry_count'] ?? 0),
             'topic_title' => $item->topic?->title ?? '—',
             'error_message' => $item->error_message,
             'post_id' => $item->post_id,
@@ -55,6 +58,8 @@ class AutomationRunItemPresenter
             $item->post_id,
             $item->metadata['pipeline'] ?? null,
             $item->metadata['generation_steps'] ?? null,
+            $item->metadata['retry_count'] ?? null,
+            $item->metadata['previous_errors'] ?? null,
         ]));
     }
 

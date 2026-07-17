@@ -96,6 +96,8 @@ class PublishPostTargetJob implements ShouldQueue
 
                 Log::info("Successfully published Target ID: {$target->id}");
 
+                $this->notifyPublishOutcome($target, true);
+
                 // Check if all targets are completed for this post
                 $this->checkAndCompletePost($target->post);
 
@@ -113,6 +115,7 @@ class PublishPostTargetJob implements ShouldQueue
 
                 $target->post->update(['status' => PostStatus::FAILED]);
                 Log::error("Access token expired for Account ID: {$target->social_account_id}. Target {$target->id} failed.");
+                $this->notifyPublishOutcome($target, false, $result['error'] ?? null);
 
             } else {
                 // General Failures
@@ -125,6 +128,7 @@ class PublishPostTargetJob implements ShouldQueue
                     $target->update(['status' => PostStatus::FAILED]);
                     $target->post->update(['status' => PostStatus::FAILED]);
                     Log::error("Publication target {$target->id} failed" . ($this->immediate ? ' (immediate publish).' : " permanently after {$this->tries} attempts."));
+                    $this->notifyPublishOutcome($target, false, $result['error'] ?? null);
                 } else {
                     // Re-queue with a delay
                     $target->update(['status' => PostStatus::SCHEDULED]);
@@ -140,8 +144,42 @@ class PublishPostTargetJob implements ShouldQueue
                 'error_message' => $e->getMessage()
             ]);
             $target->post->update(['status' => PostStatus::FAILED]);
+            $this->notifyPublishOutcome($target, false, $e->getMessage());
         } finally {
             $lock->release();
+        }
+    }
+
+    protected function notifyPublishOutcome(PostTarget $target, bool $success, ?string $error = null): void
+    {
+        try {
+            $notifications = app(\App\Services\Notifications\InAppNotificationService::class);
+            $post = $target->post;
+            $title = $post?->title ?: ('Post #'.($post?->id ?? $target->id));
+            $provider = is_object($target->provider) ? $target->provider->value : (string) $target->provider;
+            $link = $post ? route('posts.index', ['status' => $success ? 'published' : 'failed']) : null;
+
+            if ($success) {
+                $notifications->notifyAdmins(
+                    'post_published',
+                    'Post published',
+                    "\"{$title}\" published to {$provider}.",
+                    'success',
+                    $link,
+                    ['post_id' => $post?->id, 'target_id' => $target->id, 'provider' => $provider],
+                );
+            } else {
+                $notifications->notifyAdmins(
+                    'post_publish_failed',
+                    'Publish failed',
+                    "\"{$title}\" failed on {$provider}".($error ? ': '.$error : '.'),
+                    'danger',
+                    $link,
+                    ['post_id' => $post?->id, 'target_id' => $target->id, 'provider' => $provider, 'error' => $error],
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to create publish notification', ['error' => $e->getMessage()]);
         }
     }
 

@@ -4,14 +4,19 @@
 @endphp
 <x-app-layout>
     <div class="pp-automation-page pp-campaign-form-page">
-        <x-pp-page-header :title="$isEdit ? 'Edit campaign' : 'New campaign'" :description="$isEdit ? 'Update schedule, channels, image templates, and daily volume.' : 'Set category, channels, creative templates, and automation schedule.'">
-            <x-slot name="breadcrumb">
-                <a href="{{ route('admin.automation.campaigns') }}" class="hover:text-[#004ac6]">Campaigns</a>
-                <span>/</span>
-                <span class="text-[#004ac6]">{{ $isEdit ? 'Edit' : 'Create' }}</span>
-            </x-slot>
-        </x-pp-page-header>
         @include('admin.automation._nav')
+
+        @include('admin.automation._mobile-bar', [
+            'default' => 'basics',
+            'back' => [
+                'url' => route('admin.automation.campaigns'),
+                'label' => 'Campaigns',
+            ],
+            'tabs' => [
+                ['id' => 'basics', 'label' => 'Basics', 'icon' => 'tune'],
+                ['id' => 'channels', 'label' => 'Channels', 'icon' => 'hub'],
+            ],
+        ])
 
         <form id="campaign-form"
               action="{{ $isEdit ? route('admin.automation.campaigns.update', $campaign) : route('admin.automation.campaigns.store') }}"

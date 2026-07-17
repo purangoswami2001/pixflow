@@ -18,6 +18,8 @@ require __DIR__.'/../vendor/autoload.php';
 $app = require_once __DIR__.'/../bootstrap/app.php';
 
 require_once __DIR__.'/../bootstrap/subdirectory.php';
-stripSubdirectoryFromRequest(resolveApplicationBasePath());
+$basePath = resolveApplicationBasePath();
+stripSubdirectoryFromRequest($basePath);
+ensureSubdirectoryScriptName($basePath);
 
 $app->handleRequest(Request::capture());

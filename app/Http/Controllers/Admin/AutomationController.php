@@ -22,6 +22,7 @@ use App\Support\AutomationContentBundle;
 use App\Support\AutomationPromptBundle;
 use App\Support\AutomationPromptSchema;
 use App\Support\AutomationRunItemPresenter;
+use App\Support\PerPage;
 use App\Support\ScheduleTimezones;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -31,7 +32,21 @@ class AutomationController extends Controller
     public function index()
     {
         $campaigns = AutomationCampaign::with('category')->orderByDesc('updated_at')->get();
-        $recentRuns = AutomationRun::with('campaign')->orderByDesc('id')->limit(8)->get();
+        $recentRuns = AutomationRun::with('campaign')
+            ->withCount([
+                'items as live_failed_count' => fn ($q) => $q->where('status', 'failed'),
+                'items as live_created_count' => fn ($q) => $q->where('status', 'post_created'),
+            ])
+            ->orderByDesc('id')
+            ->limit(8)
+            ->get();
+        $recentRuns->each(function (AutomationRun $run) {
+            $run->failed_count = (int) $run->live_failed_count;
+            $run->created_count = (int) $run->live_created_count;
+            if ($run->failed_count === 0 && $run->status === 'partial' && (int) $run->live_created_count >= $run->planned_count) {
+                $run->status = 'completed';
+            }
+        });
         $stats = [
             'categories' => ContentCategory::where('is_active', true)->count(),
             'topics' => ContentTopic::where('is_active', true)->count(),
@@ -44,16 +59,21 @@ class AutomationController extends Controller
         return view('admin.automation.index', compact('campaigns', 'recentRuns', 'stats'));
     }
 
-    public function categories()
+    public function categories(Request $request)
     {
-        $categories = ContentCategory::withCount('topics')->orderBy('sort_order')->get();
-        $mode = request('mode', 'manual') === 'ai' ? 'ai' : 'manual';
+        $perPage = PerPage::resolve($request, 10);
+        $categories = ContentCategory::withCount('topics')
+            ->orderBy('sort_order')
+            ->paginate($perPage)
+            ->withQueryString();
+        $mode = $request->query('mode', 'manual') === 'ai' ? 'ai' : 'manual';
         $brief = old('category_brief', '');
         $contentMetaPrompt = AutomationContentBundle::metaPrompt($brief);
         $contentBundleJson = old('content_bundle', session('generated_bundle', AutomationContentBundle::exportJson()));
 
         return view('admin.automation.categories', compact(
             'categories',
+            'perPage',
             'mode',
             'contentMetaPrompt',
             'contentBundleJson'
@@ -138,11 +158,15 @@ class AutomationController extends Controller
         return back()->with('status', 'Category updated.');
     }
 
-    public function topics(ContentCategory $category)
+    public function topics(Request $request, ContentCategory $category)
     {
-        $topics = $category->topics()->orderByDesc('id')->get();
+        $perPage = PerPage::resolve($request);
+        $topics = $category->topics()
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->withQueryString();
 
-        return view('admin.automation.topics', compact('category', 'topics'));
+        return view('admin.automation.topics', compact('category', 'topics', 'perPage'));
     }
 
     public function storeTopic(Request $request, ContentCategory $category)
@@ -273,11 +297,16 @@ class AutomationController extends Controller
         return back()->with('status', 'Prompt template saved.');
     }
 
-    public function campaigns()
+    public function campaigns(Request $request)
     {
-        $campaigns = AutomationCampaign::with('category')->withCount('runs')->orderByDesc('id')->get();
+        $perPage = PerPage::resolve($request);
+        $campaigns = AutomationCampaign::with('category')
+            ->withCount('runs')
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->withQueryString();
 
-        return view('admin.automation.campaigns', compact('campaigns'));
+        return view('admin.automation.campaigns', compact('campaigns', 'perPage'));
     }
 
     public function createCampaign()
@@ -411,16 +440,44 @@ class AutomationController extends Controller
         return back()->with('status', 'Automation run queued. Ensure queue:work is running.');
     }
 
-    public function runs()
+    public function runs(Request $request)
     {
-        $runs = AutomationRun::with(['campaign', 'items.post'])->orderByDesc('id')->paginate(20);
+        $perPage = PerPage::resolve($request);
+        $runs = AutomationRun::with(['campaign', 'items.post'])
+            ->withCount([
+                'items as live_failed_count' => fn ($q) => $q->where('status', 'failed'),
+                'items as live_created_count' => fn ($q) => $q->where('status', 'post_created'),
+            ])
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->withQueryString();
 
-        return view('admin.automation.runs', compact('runs'));
+        $runs->getCollection()->transform(function (AutomationRun $run) {
+            $run->failed_count = (int) $run->live_failed_count;
+            $run->created_count = (int) $run->live_created_count;
+
+            $pending = $run->items->whereNotIn('status', ['post_created', 'failed'])->count();
+            if ($pending === 0) {
+                if ($run->failed_count > 0 && $run->created_count > 0) {
+                    $run->status = 'partial';
+                } elseif ($run->failed_count > 0) {
+                    $run->status = 'failed';
+                } elseif ($run->created_count > 0) {
+                    $run->status = 'completed';
+                }
+            }
+
+            return $run;
+        });
+
+        return view('admin.automation.runs', compact('runs', 'perPage'));
     }
 
     public function showRun(AutomationRun $run)
     {
         $run->load(['campaign', 'items.topic', 'items.post']);
+        $run->syncCountsFromItems(finalize: $run->items->whereNotIn('status', ['post_created', 'failed'])->count() === 0);
+        $run->refresh()->load(['campaign', 'items.topic', 'items.post']);
         $pipelineSteps = AutomationPromptSchema::pipelineSteps();
 
         return view('admin.automation.run-show', compact('run', 'pipelineSteps'));
@@ -463,6 +520,8 @@ class AutomationController extends Controller
     public function runFeed(AutomationRun $run)
     {
         $run->load(['campaign', 'items.topic', 'items.post']);
+        $run->syncCountsFromItems(finalize: $run->items->whereNotIn('status', ['post_created', 'failed'])->count() === 0);
+        $run->refresh()->load(['campaign', 'items.topic', 'items.post']);
         $pipelineSteps = AutomationPromptSchema::pipelineSteps();
 
         $items = $run->items->map(function (AutomationRunItem $item) use ($pipelineSteps, $run) {
@@ -519,12 +578,27 @@ class AutomationController extends Controller
 
         $metadata = $item->metadata ?? [];
         $metadata['last_retry_at'] = now()->toIso8601String();
+        $metadata['retry_count'] = (int) ($metadata['retry_count'] ?? 0) + 1;
+        $metadata['retried_from_failed'] = true;
+
+        if ($item->error_message) {
+            $history = is_array($metadata['previous_errors'] ?? null) ? $metadata['previous_errors'] : [];
+            $history[] = [
+                'at' => now()->toIso8601String(),
+                'message' => $item->error_message,
+                'step' => $metadata['failed_at_step'] ?? null,
+            ];
+            $metadata['previous_errors'] = array_values(array_slice($history, -5));
+        }
 
         $item->update([
             'status' => 'queued',
             'error_message' => null,
             'metadata' => $metadata,
         ]);
+
+        // Keep list counters honest while retry is in flight (no longer count this item as failed).
+        $run?->fresh('items')?->syncCountsFromItems(finalize: false);
 
         GenerateAutomatedPostJob::dispatch($item->id, resume: true);
 

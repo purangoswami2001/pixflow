@@ -9,7 +9,7 @@
             <span>Organization</span><span>/</span><span class="text-[#004ac6]">Team Management</span>
         </x-slot>
         <x-slot name="actions">
-            <button type="button" onclick="toggleInvitePanel()" class="pp-btn-primary">
+            <button type="button" id="ppInviteOpenBtn" class="pp-btn-primary">
                 <span class="material-symbols-outlined text-[18px]">person_add</span>
                 Invite User
             </button>
@@ -93,8 +93,12 @@
                             <td class="text-right">
                                 <div class="flex items-center justify-end gap-1">
                                     <button type="button"
-                                        onclick="openEditPanel({{ $user->id }}, @js($user->name), @js($user->email), @js($editRole))"
-                                        class="p-2 text-[#737686] hover:text-[#004ac6] rounded-lg transition-colors" title="Edit user">
+                                        class="pp-edit-user-btn p-2 text-[#737686] hover:text-[#004ac6] rounded-lg transition-colors"
+                                        title="Edit user"
+                                        data-id="{{ $user->id }}"
+                                        data-name="{{ $user->name }}"
+                                        data-email="{{ $user->email }}"
+                                        data-role="{{ $editRole }}">
                                         <span class="material-symbols-outlined text-[20px]">edit</span>
                                     </button>
                                     @if($user->id !== auth()->id())
@@ -119,15 +123,17 @@
         </div>
     </div>
 
-    {{-- Invite side panel --}}
-    <div id="invitePanel" class="fixed top-0 right-0 h-full w-full max-w-[400px] bg-white shadow-2xl z-[60] transform translate-x-full transition-transform duration-300 border-l border-[#c3c6d7]">
+    <div id="panelBackdrop" class="pp-team-drawer-backdrop" aria-hidden="true"></div>
+
+    {{-- Invite side panel — closed by default via .pp-team-drawer --}}
+    <aside id="invitePanel" class="pp-team-drawer" aria-hidden="true">
         <div class="h-full flex flex-col">
             <div class="px-8 py-6 border-b border-[#c3c6d7] flex items-center justify-between">
                 <div>
                     <h2 class="font-display text-xl font-semibold text-[#131b2e]">Invite User</h2>
                     <p class="text-xs text-[#737686] mt-1">Add a new teammate to your organization.</p>
                 </div>
-                <button type="button" onclick="toggleInvitePanel()" class="p-2 hover:bg-[#f2f3ff] rounded-full text-[#737686]">
+                <button type="button" data-pp-drawer-close class="p-2 hover:bg-[#f2f3ff] rounded-full text-[#737686]" aria-label="Close">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
@@ -136,11 +142,11 @@
                 <div class="flex-1 overflow-y-auto px-8 py-6 space-y-5">
                     <div>
                         <label class="text-xs font-semibold text-[#434655] uppercase tracking-wide block mb-1">Full Name</label>
-                        <input type="text" name="name" class="pp-input" required placeholder="John Doe">
+                        <input type="text" name="name" class="pp-input" required placeholder="John Doe" value="{{ old('name') }}">
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-[#434655] uppercase tracking-wide block mb-1">Email Address</label>
-                        <input type="email" name="email" class="pp-input" required placeholder="john@example.com">
+                        <input type="email" name="email" class="pp-input" required placeholder="john@example.com" value="{{ old('email') }}">
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-[#434655] uppercase tracking-wide block mb-1">Password</label>
@@ -149,8 +155,8 @@
                     <div>
                         <label class="text-xs font-semibold text-[#434655] uppercase tracking-wide block mb-1">Assigned Role</label>
                         <select name="role" class="pp-input" required>
-                            <option value="creator">Creator (Schedule & Create)</option>
-                            <option value="admin">Admin (Full Control)</option>
+                            <option value="creator" @selected(old('role', 'creator') === 'creator')>Creator (Schedule & Create)</option>
+                            <option value="admin" @selected(old('role') === 'admin')>Admin (Full Control)</option>
                         </select>
                     </div>
                     <div class="p-4 bg-[#f2f3ff] rounded-xl border border-[#c3c6d7] flex gap-3">
@@ -159,22 +165,22 @@
                     </div>
                 </div>
                 <div class="p-8 border-t border-[#c3c6d7] grid grid-cols-2 gap-4">
-                    <button type="button" onclick="toggleInvitePanel()" class="pp-btn-secondary">Cancel</button>
+                    <button type="button" data-pp-drawer-close class="pp-btn-secondary">Cancel</button>
                     <button type="submit" class="pp-btn-primary">Create Account</button>
                 </div>
             </form>
         </div>
-    </div>
+    </aside>
 
     {{-- Edit user side panel --}}
-    <div id="editPanel" class="fixed top-0 right-0 h-full w-full max-w-[400px] bg-white shadow-2xl z-[60] transform translate-x-full transition-transform duration-300 border-l border-[#c3c6d7]">
+    <aside id="editPanel" class="pp-team-drawer" aria-hidden="true">
         <div class="h-full flex flex-col">
             <div class="px-8 py-6 border-b border-[#c3c6d7] flex items-center justify-between">
                 <div>
                     <h2 class="font-display text-xl font-semibold text-[#131b2e]">Edit Member</h2>
                     <p class="text-xs text-[#737686] mt-1">Update profile, password, or role.</p>
                 </div>
-                <button type="button" onclick="closeEditPanel()" class="p-2 hover:bg-[#f2f3ff] rounded-full text-[#737686]">
+                <button type="button" data-pp-drawer-close class="p-2 hover:bg-[#f2f3ff] rounded-full text-[#737686]" aria-label="Close">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
@@ -204,57 +210,98 @@
                     </div>
                 </div>
                 <div class="p-8 border-t border-[#c3c6d7] grid grid-cols-2 gap-4">
-                    <button type="button" onclick="closeEditPanel()" class="pp-btn-secondary">Cancel</button>
+                    <button type="button" data-pp-drawer-close class="pp-btn-secondary">Cancel</button>
                     <button type="submit" class="pp-btn-primary">Save Changes</button>
                 </div>
             </form>
         </div>
-    </div>
-    <div id="panelBackdrop" class="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[55] hidden" onclick="closeAllPanels()"></div>
+    </aside>
 
     @push('scripts')
     <script>
-        function toggleInvitePanel() {
-            closeEditPanel();
-            const panel = document.getElementById('invitePanel');
+        (function () {
+            const invitePanel = document.getElementById('invitePanel');
+            const editPanel = document.getElementById('editPanel');
             const backdrop = document.getElementById('panelBackdrop');
-            const open = panel.classList.contains('translate-x-full');
-            panel.classList.toggle('translate-x-full', !open);
-            backdrop.classList.toggle('hidden', !open);
-        }
+            const updateUrl = @json(url('/admin/users'));
 
-        function openEditPanel(id, name, email, role) {
-            closeInvitePanel();
-            document.getElementById('editUserForm').action = `/admin/users/${id}`;
-            document.getElementById('editName').value = name;
-            document.getElementById('editEmail').value = email;
-            document.getElementById('editPassword').value = '';
-            document.getElementById('editRole').value = role;
-            const panel = document.getElementById('editPanel');
-            const backdrop = document.getElementById('panelBackdrop');
-            panel.classList.remove('translate-x-full');
-            backdrop.classList.remove('hidden');
-        }
-
-        function closeEditPanel() {
-            document.getElementById('editPanel').classList.add('translate-x-full');
-            if (document.getElementById('invitePanel').classList.contains('translate-x-full')) {
-                document.getElementById('panelBackdrop').classList.add('hidden');
+            function closeNavSidebar() {
+                document.getElementById('ppSidebar')?.classList.remove('open');
+                document.getElementById('ppSidebarBackdrop')?.classList.add('hidden');
             }
-        }
 
-        function closeInvitePanel() {
-            document.getElementById('invitePanel').classList.add('translate-x-full');
-            if (document.getElementById('editPanel').classList.contains('translate-x-full')) {
-                document.getElementById('panelBackdrop').classList.add('hidden');
+            function syncBody() {
+                const anyOpen = invitePanel.classList.contains('is-open') || editPanel.classList.contains('is-open');
+                document.body.classList.toggle('pp-team-drawer-open', anyOpen);
+                backdrop.classList.toggle('is-open', anyOpen);
+                backdrop.setAttribute('aria-hidden', anyOpen ? 'false' : 'true');
             }
-        }
 
-        function closeAllPanels() {
-            closeEditPanel();
-            closeInvitePanel();
-            document.getElementById('panelBackdrop').classList.add('hidden');
-        }
+            function closeAllDrawers() {
+                invitePanel.classList.remove('is-open');
+                editPanel.classList.remove('is-open');
+                invitePanel.setAttribute('aria-hidden', 'true');
+                editPanel.setAttribute('aria-hidden', 'true');
+                syncBody();
+            }
+
+            function openInvite() {
+                closeNavSidebar();
+                editPanel.classList.remove('is-open');
+                editPanel.setAttribute('aria-hidden', 'true');
+                invitePanel.classList.add('is-open');
+                invitePanel.setAttribute('aria-hidden', 'false');
+                syncBody();
+            }
+
+            function openEdit(id, name, email, role) {
+                closeNavSidebar();
+                invitePanel.classList.remove('is-open');
+                invitePanel.setAttribute('aria-hidden', 'true');
+                document.getElementById('editUserForm').action = updateUrl + '/' + id;
+                document.getElementById('editName').value = name;
+                document.getElementById('editEmail').value = email;
+                document.getElementById('editPassword').value = '';
+                document.getElementById('editRole').value = role;
+                editPanel.classList.add('is-open');
+                editPanel.setAttribute('aria-hidden', 'false');
+                syncBody();
+            }
+
+            // Always start closed (prevents flash / stuck-open after navigation)
+            closeAllDrawers();
+
+            document.getElementById('ppInviteOpenBtn')?.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openInvite();
+            });
+
+            document.querySelectorAll('.pp-edit-user-btn').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openEdit(btn.dataset.id, btn.dataset.name, btn.dataset.email, btn.dataset.role);
+                });
+            });
+
+            document.querySelectorAll('[data-pp-drawer-close]').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    closeAllDrawers();
+                });
+            });
+
+            backdrop?.addEventListener('click', closeAllDrawers);
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') closeAllDrawers();
+            });
+
+            @if($errors->any() && old('_token'))
+                openInvite();
+            @endif
+        })();
     </script>
     @endpush
 </x-app-layout>

@@ -16,6 +16,10 @@
                             <span class="material-symbols-outlined text-[18px]">add</span>
                             New campaign
                         </a>
+                        <a href="{{ route('admin.automation.auto-review') }}" class="pp-btn-ghost">
+                            <span class="material-symbols-outlined text-[18px]">fact_check</span>
+                            Auto Review
+                        </a>
                         <a href="{{ route('admin.automation.categories') }}" class="pp-btn-ghost">
                             <span class="material-symbols-outlined text-[18px]">folder_open</span>
                             Manage content
@@ -133,6 +137,7 @@
                             $statusClass = match($run->status) {
                                 'completed' => 'pp-status-badge--success',
                                 'failed' => 'pp-status-badge--danger',
+                                'partial' => 'pp-status-badge--running',
                                 'running' => 'pp-status-badge--running',
                                 default => 'pp-status-badge--muted',
                             };
@@ -143,7 +148,7 @@
                                     <p class="font-semibold text-sm text-[#131b2e]">Run #{{ $run->id }}</p>
                                     <p class="text-xs text-[#737686] mt-0.5">{{ $run->campaign?->name }}</p>
                                 </div>
-                                <span class="pp-status-badge {{ $statusClass }}">{{ $run->status }}</span>
+                                <span class="pp-status-badge {{ $statusClass }}">{{ $run->status === 'completed' ? 'success' : $run->status }}</span>
                             </div>
                             <div class="flex items-center gap-3">
                                 <div class="pp-auto-progress flex-1">

@@ -1,121 +1,211 @@
 <x-app-layout>
-    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
-        <div>
-            <h1 class="h3 fw-bold text-dark mb-1">Calendar Planner</h1>
-            <p class="text-muted mb-0 small">Schedule visualization board mapping social updates monthly.</p>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-            <a href="{{ route('posts.calendar', ['month' => $month == 1 ? 12 : $month - 1, 'year' => $month == 1 ? $year - 1 : $year]) }}" class="btn btn-outline-secondary btn-sm fw-bold">
-                &larr; Prev Month
-            </a>
-            <span class="fw-bold px-2 text-dark">{{ $monthName }}</span>
-            <a href="{{ route('posts.calendar', ['month' => $month == 12 ? 1 : $month + 1, 'year' => $month == 12 ? $year + 1 : $year]) }}" class="btn btn-outline-secondary btn-sm fw-bold">
-                Next Month &rarr;
-            </a>
-        </div>
+    @php
+        $providerTheme = [
+            'facebook' => ['bg' => 'pp-cal-chip pp-cal-chip--facebook'],
+            'instagram' => ['bg' => 'pp-cal-chip pp-cal-chip--instagram'],
+            'pinterest' => ['bg' => 'pp-cal-chip pp-cal-chip--pinterest'],
+        ];
+        $defaultTheme = ['bg' => 'pp-cal-chip pp-cal-chip--default'];
+        $prevUrl = route('posts.calendar', ['month' => $month == 1 ? 12 : $month - 1, 'year' => $month == 1 ? $year - 1 : $year]);
+        $nextUrl = route('posts.calendar', ['month' => $month == 12 ? 1 : $month + 1, 'year' => $month == 12 ? $year + 1 : $year]);
+        $agendaDays = collect($daysGrid)->filter(fn ($day) => $day['isCurrentMonth'] && $day['targets']->isNotEmpty());
+        $canEditSelected = $selectedTarget
+            ? $selectedTarget->post->canBeEditedBy(auth()->user())
+            : false;
+        $isPublishedSelected = $selectedTarget
+            && in_array($selectedTarget->status->value, ['published', 'publishing'], true);
+    @endphp
+
+    <x-pp-page-header title="Schedule" description="Monthly view of scheduled and published posts across channels.">
+        <x-slot name="actions">
+            <div class="pp-cal-month-nav" role="group" aria-label="Month navigation">
+                <a href="{{ $prevUrl }}" class="pp-btn-secondary pp-cal-nav-btn" title="Previous month" aria-label="Previous month">
+                    <span class="material-symbols-outlined">chevron_left</span>
+                </a>
+                <span class="pp-cal-month-label">{{ $monthName }}</span>
+                <a href="{{ $nextUrl }}" class="pp-btn-secondary pp-cal-nav-btn" title="Next month" aria-label="Next month">
+                    <span class="material-symbols-outlined">chevron_right</span>
+                </a>
+            </div>
+        </x-slot>
+    </x-pp-page-header>
+
+    <div class="pp-cal-legend mb-3 sm:mb-4">
+        <span class="pp-cal-legend-item"><span class="pp-cal-chip pp-cal-chip--facebook">FB</span> Facebook</span>
+        <span class="pp-cal-legend-item"><span class="pp-cal-chip pp-cal-chip--instagram">IG</span> Instagram</span>
+        <span class="pp-cal-legend-item"><span class="pp-cal-chip pp-cal-chip--pinterest">Pin</span> Pinterest</span>
     </div>
 
-    <div class="row g-4">
-        <!-- Calendar Grid -->
-        <div class="col-12 col-lg-9">
-            <div class="card border-0 shadow-sm overflow-hidden">
-                <!-- Day Headers -->
-                <div class="row g-0 text-center bg-light border-bottom text-muted fw-bold small py-2.5">
-                    <div class="col">Sun</div>
-                    <div class="col">Mon</div>
-                    <div class="col">Tue</div>
-                    <div class="col">Wed</div>
-                    <div class="col">Thu</div>
-                    <div class="col">Fri</div>
-                    <div class="col">Sat</div>
-                </div>
+    <div class="pp-cal-layout">
+        <div class="pp-cal-board pp-card overflow-hidden">
+            <div class="pp-cal-weekdays">
+                @foreach(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] as $dow)
+                    <div class="pp-cal-dow">
+                        <span class="pp-cal-dow-full">{{ $dow }}</span>
+                        <span class="pp-cal-dow-short">{{ substr($dow, 0, 1) }}</span>
+                    </div>
+                @endforeach
+            </div>
 
-                <!-- Calendar Cells -->
-                <div class="row g-0">
-                    @foreach($daysGrid as $day)
-                        <div class="col-1-7 border-end border-bottom p-2 d-flex flex-column justify-content-between min-vh-10 {{ $day['isCurrentMonth'] ? 'bg-white' : 'bg-light text-muted' }}" style="min-height: 110px; width: 14.285%;">
-                            <!-- Date Num -->
-                            <div class="d-flex justify-content-between align-items-center">
-                                <span class="badge rounded-circle {{ $day['isToday'] ? 'bg-primary text-white' : ($day['isCurrentMonth'] ? 'text-dark fw-bold' : 'text-muted') }}" style="font-size: 11px;">
-                                    {{ $day['date']->format('d') }}
-                                </span>
-                            </div>
+            <div class="pp-cal-days">
+                @foreach($daysGrid as $day)
+                    @php
+                        $count = $day['targets']->count();
+                        $isEmptyCurrent = $day['isCurrentMonth'] && $count === 0;
+                    @endphp
+                    <div class="pp-cal-day {{ $day['isCurrentMonth'] ? 'is-current' : 'is-muted' }} {{ $day['isToday'] ? 'is-today' : '' }} {{ $isEmptyCurrent ? 'is-empty' : '' }}">
+                        <div class="pp-cal-day-head">
+                            <span class="pp-cal-day-num">{{ $day['date']->format('j') }}</span>
+                            @if($count > 0)
+                                <span class="pp-cal-day-count">{{ $count }}</span>
+                            @endif
+                        </div>
 
-                            <!-- Indicators -->
-                            <div class="mt-2 space-y-1 overflow-y-auto" style="max-height: 60px;">
+                        @if($isEmptyCurrent)
+                            <p class="pp-cal-day-empty">No posts</p>
+                        @else
+                            <div class="pp-cal-day-events">
                                 @foreach($day['targets'] as $target)
-                                    <a href="{{ route('posts.calendar', ['month' => $month, 'year' => $year, 'selected_target' => $target->id]) }}" class="d-block text-decoration-none px-2 py-0.5 rounded mb-1 text-truncate border font-bold" style="font-size: 9px; {{ $target->provider->value === 'facebook' ? 'background-color:#e7f1ff; color:#0d6efd; border-color:#cff4fc;' : ($target->provider->value === 'instagram' ? 'background-color:#f8d7da; color:#b02a37; border-color:#f5c2c7;' : 'background-color:#f8d7da; color:#dc3545; border-color:#f5c2c7;') }}">
-                                        [{{ ucfirst($target->provider->value) }}] {{ $target->post->title }}
+                                    @php $t = $providerTheme[$target->provider->value] ?? $defaultTheme; @endphp
+                                    <a href="{{ route('posts.calendar', ['month' => $month, 'year' => $year, 'selected_target' => $target->id]) }}"
+                                       class="{{ $t['bg'] }} {{ $selectedTarget && $selectedTarget->id === $target->id ? 'is-selected' : '' }}"
+                                       title="{{ ucfirst($target->provider->value) }}{{ $target->isVideoMedia() ? ' · Video' : '' }} · {{ $target->post->title }}">
+                                        @if($target->isVideoMedia())
+                                            <span class="material-symbols-outlined">videocam</span>
+                                        @endif
+                                        <span class="pp-cal-chip-text">{{ $target->post->title }}</span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </div>
+
+        {{-- Mobile-friendly agenda of days that have posts --}}
+        <section class="pp-cal-agenda" aria-label="Posts this month">
+            <div class="pp-cal-agenda-head">
+                <h3>This month</h3>
+                <p>{{ $agendaDays->sum(fn ($d) => $d['targets']->count()) }} posts</p>
+            </div>
+
+            @if($agendaDays->isEmpty())
+                <div class="pp-cal-agenda-empty">
+                    <span class="material-symbols-outlined">event_busy</span>
+                    <p>No posts scheduled this month.</p>
+                </div>
+            @else
+                <div class="pp-cal-agenda-list">
+                    @foreach($agendaDays as $day)
+                        <div class="pp-cal-agenda-day">
+                            <div class="pp-cal-agenda-date">
+                                <span class="pp-cal-agenda-dow">{{ $day['date']->format('D') }}</span>
+                                <span class="pp-cal-agenda-num {{ $day['isToday'] ? 'is-today' : '' }}">{{ $day['date']->format('j') }}</span>
+                            </div>
+                            <div class="pp-cal-agenda-items">
+                                @foreach($day['targets'] as $target)
+                                    @php $t = $providerTheme[$target->provider->value] ?? $defaultTheme; @endphp
+                                    <a href="{{ route('posts.calendar', ['month' => $month, 'year' => $year, 'selected_target' => $target->id]) }}"
+                                       class="pp-cal-agenda-item {{ $selectedTarget && $selectedTarget->id === $target->id ? 'is-selected' : '' }}">
+                                        <span class="{{ $t['bg'] }} pp-cal-agenda-provider">{{ strtoupper(substr($target->provider->value, 0, 2)) }}</span>
+                                        <span class="pp-cal-agenda-title">{{ $target->post->title }}</span>
+                                        <span class="material-symbols-outlined">chevron_right</span>
                                     </a>
                                 @endforeach
                             </div>
                         </div>
                     @endforeach
                 </div>
+            @endif
+        </section>
+    </div>
+
+    @if($selectedTarget)
+        @php $st = $providerTheme[$selectedTarget->provider->value] ?? $defaultTheme; @endphp
+        <a href="{{ route('posts.calendar', ['month' => $month, 'year' => $year]) }}"
+           class="pp-cal-backdrop is-open" aria-label="Close details"></a>
+
+        <aside class="pp-cal-detail is-open" role="dialog" aria-modal="true" aria-label="Post details">
+            <div class="pp-cal-detail-handle" aria-hidden="true"></div>
+            <div class="pp-cal-detail-head">
+                <h2>Post Details</h2>
+                <a href="{{ route('posts.calendar', ['month' => $month, 'year' => $year]) }}"
+                   class="pp-cal-detail-close" title="Close" aria-label="Close">
+                    <span class="material-symbols-outlined">close</span>
+                </a>
             </div>
-        </div>
 
-        <!-- Sidebar selected target details -->
-        <div class="col-12 col-lg-3">
-            <div class="card border-0 shadow-sm p-4 h-100 min-vh-30">
-                @if($selectedTarget)
-                    <div class="d-flex justify-content-between border-bottom pb-2 mb-3">
-                        <h5 class="fw-bold text-dark mb-0">Post Details</h5>
-                        <a href="{{ route('posts.calendar', ['month' => $month, 'year' => $year]) }}" class="btn-close" aria-label="Close"></a>
-                    </div>
+            <div class="pp-cal-detail-body">
+                <div>
+                    <p class="pp-label">Title</p>
+                    <p class="pp-cal-detail-title">{{ $selectedTarget->post->title }}</p>
+                </div>
 
-                    <div class="d-flex flex-column gap-3">
-                        <div>
-                            <span class="text-uppercase text-muted fw-bold d-block mb-1" style="font-size: 9px;">Title</span>
-                            <h6 class="fw-bold text-dark mb-0">{{ $selectedTarget->post->title }}</h6>
-                        </div>
-
-                        @if($selectedTarget->hasDisplayableMedia())
-                            <div class="border rounded overflow-hidden" style="max-height: 140px;">
-                                @if($selectedTarget->isVideoMedia())
-                                    <video src="{{ $selectedTarget->resolvedMediaUrl() }}" class="w-100 object-fit-cover" muted playsinline></video>
-                                @else
-                                    <img src="{{ $selectedTarget->resolvedMediaUrl() }}" class="w-100 object-fit-cover cursor-zoom-in" alt=""
-                                         data-pp-lightbox="{{ $selectedTarget->resolvedMediaUrl() }}"
-                                         title="View full image">
-                                @endif
-                            </div>
+                @if($selectedTarget->hasDisplayableMedia())
+                    <div class="pp-cal-detail-media">
+                        @if($selectedTarget->isVideoMedia())
+                            <video
+                                src="{{ $selectedTarget->resolvedMediaUrl() }}"
+                                class="w-full max-h-56 object-contain bg-black"
+                                controls
+                                playsinline
+                                preload="metadata"
+                            >
+                                Your browser does not support this video.
+                            </video>
+                        @else
+                            <img src="{{ $selectedTarget->resolvedMediaUrl() }}" class="max-w-full max-h-48 object-contain cursor-zoom-in" alt=""
+                                 data-pp-lightbox="{{ $selectedTarget->resolvedMediaUrl() }}" title="View full image">
                         @endif
-
-                        <div>
-                            <span class="text-uppercase text-muted fw-bold d-block mb-1" style="font-size: 9px;">Caption</span>
-                            <div class="p-2.5 bg-light rounded border text-muted small" style="white-space: pre-wrap; max-height: 100px; overflow-y:auto;">{{ $selectedTarget->post->caption }}</div>
-                        </div>
-
-                        <div class="row g-2 text-xs">
-                            <div class="col-6">
-                                <span class="text-uppercase text-muted fw-bold d-block" style="font-size: 8px;">Network</span>
-                                <span class="fw-bold text-primary">{{ ucfirst($selectedTarget->provider->value) }}</span>
-                            </div>
-                            <div class="col-6">
-                                <span class="text-uppercase text-muted fw-bold d-block" style="font-size: 8px;">Time</span>
-                                <span class="fw-bold text-dark">{{ $selectedTarget->scheduled_at->timezone($selectedTarget->timezone)->format('H:i') }}</span>
-                            </div>
-                        </div>
-
-                        <div>
-                            <span class="text-uppercase text-muted fw-bold d-block mb-1" style="font-size: 9px;">Status</span>
-                            @if($selectedTarget->status->value === 'published')
-                                <span class="badge bg-success-subtle text-success border border-success-subtle">Published</span>
-                            @elseif($selectedTarget->status->value === 'failed')
-                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Failed</span>
-                            @else
-                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Scheduled</span>
-                            @endif
-                        </div>
-                    </div>
-                @else
-                    <div class="text-center py-5 text-muted">
-                        <i class="bi bi-info-circle fs-3 mb-2"></i>
-                        <p class="small mb-0">Select any scheduled post on the calendar cells to view target options.</p>
                     </div>
                 @endif
+
+                @if($selectedTarget->post->caption)
+                    <div>
+                        <p class="pp-label">Caption</p>
+                        <div class="pp-cal-detail-caption">{{ $selectedTarget->post->caption }}</div>
+                    </div>
+                @endif
+
+                <div class="pp-cal-detail-grid">
+                    <div>
+                        <p class="pp-label">Network</p>
+                        <span class="{{ $st['bg'] }}">{{ ucfirst($selectedTarget->provider->value) }}</span>
+                    </div>
+                    <div>
+                        <p class="pp-label">{{ $selectedTarget->scheduled_at ? 'Scheduled' : 'Published' }}</p>
+                        @php $calAt = $selectedTarget->calendarAt(); @endphp
+                        <p class="pp-cal-detail-when">
+                            {{ $calAt ? $calAt->timezone($selectedTarget->timezone ?: config('app.timezone'))->format('M j · g:i A') : '—' }}
+                        </p>
+                    </div>
+                </div>
+
+                <div>
+                    <p class="pp-label">Status</p>
+                    @if($selectedTarget->status->value === 'published')
+                        <span class="pp-status-chip bg-emerald-50 text-emerald-700">Published</span>
+                    @elseif($selectedTarget->status->value === 'failed')
+                        <span class="pp-status-chip bg-[#ffdad6] text-[#93000a]">Failed</span>
+                    @else
+                        <span class="pp-status-chip bg-[var(--pp-primary-muted)] text-[var(--pp-primary)]">Scheduled</span>
+                    @endif
+                </div>
+
+                <div class="pp-cal-detail-actions">
+                    <a href="{{ route('posts.index', ['view' => $selectedTarget->post_id]) }}" class="pp-btn-primary text-sm">
+                        <span class="material-symbols-outlined text-[16px]">visibility</span>
+                        View post
+                    </a>
+                    @if($canEditSelected && ! $isPublishedSelected)
+                        <a href="{{ route('posts.edit', $selectedTarget->post_id) }}" class="pp-btn-secondary text-sm">
+                            <span class="material-symbols-outlined text-[16px]">edit</span>
+                            Edit
+                        </a>
+                    @endif
+                </div>
             </div>
-        </div>
-    </div>
+        </aside>
+    @endif
 </x-app-layout>

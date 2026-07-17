@@ -8,7 +8,10 @@ use App\Models\User;
 use App\Models\SocialAccount;
 use App\Models\SocialDestination;
 use App\Models\MediaAsset;
+use App\Models\ContentCategory;
 use App\Models\RecurringSchedule;
+use App\Support\AutomationImageStyles;
+use App\Support\PerPage;
 use App\Enums\PostStatus;
 use App\Enums\PostType;
 use App\Enums\ProviderType;
@@ -36,6 +39,7 @@ class PostController extends Controller
         protected SocialAccountManager $accountManager,
         protected PlatformPostFieldsService $platformFields,
         protected PostMediaArchiveService $postMediaArchive,
+        protected \App\Services\Posts\PostReviewService $postReviews,
     ) {
         $this->scheduler = $scheduler;
     }
@@ -84,8 +88,7 @@ class PostController extends Controller
 
         $query->orderBy('created_at', 'desc');
 
-        $perPage = (int) $request->query('per_page', 20);
-        $perPage = in_array($perPage, [12, 20, 40, 60], true) ? $perPage : 20;
+        $perPage = PerPage::resolve($request, 8, [8, 10, 20, 40, 50]);
 
         $posts = $query->paginate($perPage)->withQueryString();
         $scheduleMap = $this->queueSchedule->targetScheduleMap();
@@ -93,6 +96,15 @@ class PostController extends Controller
         $countsQuery = Post::query();
         if (! $isAdmin) {
             $countsQuery->where('user_id', auth()->id());
+        }
+
+        $viewPost = null;
+        if ($request->filled('view')) {
+            $viewQuery = Post::with(['targets.socialAccount', 'targets.socialDestination', 'targets.mediaAsset', 'user']);
+            if (! $isAdmin) {
+                $viewQuery->where('user_id', auth()->id());
+            }
+            $viewPost = $viewQuery->find((int) $request->query('view'));
         }
 
         return view('posts.index', [
@@ -105,6 +117,7 @@ class PostController extends Controller
             'channels' => $this->mediaConfig->channels(),
             'pendingCount' => (clone $countsQuery)->where('status', PostStatus::PENDING_APPROVAL)->count(),
             'scheduleMap' => $scheduleMap,
+            'viewPost' => $viewPost,
         ]);
     }
 
@@ -152,6 +165,18 @@ class PostController extends Controller
             ];
         })->values();
 
+        $categories = ContentCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'niche_prompt', 'audience']);
+
+        $imageStyles = collect(AutomationImageStyles::options())->map(fn ($opt, $key) => [
+            'key' => $key,
+            'label' => $opt['label'],
+            'description' => $opt['description'],
+        ])->values()->all();
+
         return [
             'accounts' => $accounts,
             'accountsJson' => $accountsJson,
@@ -160,6 +185,8 @@ class PostController extends Controller
             'aiConfigured' => AiConfig::isConfigured(),
             'aiProvider' => AiConfig::providerLabel(),
             'platformFields' => config('post-platform-fields'),
+            'contentCategories' => $categories,
+            'imageStyles' => $imageStyles,
             'editing' => false,
             'post' => null,
             'editPayload' => null,
@@ -215,21 +242,34 @@ class PostController extends Controller
     protected function buildEditPayload(Post $post): array
     {
         $target = $post->targets->first();
+        $wizard = $post->metadata['wizard'] ?? null;
+        $wizardState = is_array($wizard['state'] ?? null) ? $wizard['state'] : [];
+        $wizardMedia = null;
+
+        if (! $target && ! empty($wizardState['selected_media_id'])) {
+            $mediaQuery = MediaAsset::query();
+            if (! auth()->user()->isAdmin()) {
+                $mediaQuery->where('user_id', auth()->id());
+            }
+            $wizardMedia = $mediaQuery->find($wizardState['selected_media_id']);
+        }
 
         return [
-            'channel' => $target?->provider->value,
-            'media_type' => $target?->archivedMediaType(),
-            'preset_key' => $target?->media_snapshot['preset_key'] ?? null,
-            'media_id' => null,
-            'media_url' => $target?->resolvedMediaUrl(),
-            'media_name' => $target?->archivedOriginalName(),
+            'channel' => $target?->provider->value ?? ($wizardState['channel'] ?? null),
+            'media_type' => $target?->archivedMediaType() ?? ($wizardState['media_type'] ?? null),
+            'preset_key' => $target?->media_snapshot['preset_key'] ?? ($wizardState['preset_key'] ?? null),
+            'media_id' => $wizardMedia?->id,
+            'media_url' => $target?->resolvedMediaUrl() ?? $wizardMedia?->url,
+            'media_name' => $target?->archivedOriginalName() ?? $wizardMedia?->original_name,
             'has_archived_media' => (bool) $target?->hasDisplayableMedia(),
-            'account_id' => $target?->social_account_id,
-            'destination_id' => $target?->social_destination_id,
+            'account_id' => $target?->social_account_id ?? ($wizardState['account_id'] ?? null),
+            'destination_id' => $target?->social_destination_id ?? ($wizardState['destination_id'] ?? null),
             'title' => $post->title,
             'caption' => $post->caption,
             'hashtags' => implode(', ', $post->hashtags ?? []),
-            'platform_fields' => $target?->platform_payload ?? [],
+            'platform_fields' => $target?->platform_payload ?? ($wizardState['platform_fields'] ?? []),
+            'creation_source' => $post->metadata['source'] ?? 'manual',
+            'wizard' => $wizard,
         ];
     }
 
@@ -384,12 +424,14 @@ class PostController extends Controller
             'selectedAccount' => 'required|integer',
             'selectedDestination' => 'nullable|integer',
             'selectedMediaId' => 'required|integer',
+            'creation_source' => 'nullable|string|in:manual,semi-ai',
         ], $this->platformFields->validationRules($request->channel, $request)));
 
         $user = auth()->user();
         $isDraft = $request->has('is_draft');
         $account = $this->validateAccount((int) $request->selectedAccount);
         $tags = array_filter(array_map('trim', explode(',', $request->hashtagsInput ?? '')));
+        $creationSource = $request->input('creation_source', 'manual') === 'semi-ai' ? 'semi-ai' : 'manual';
 
         $defaultStatus = $user->isAdmin() ? PostStatus::APPROVED : PostStatus::PENDING_APPROVAL;
         if ($isDraft) {
@@ -402,6 +444,9 @@ class PostController extends Controller
             'is_draft' => $isDraft,
             'status' => $defaultStatus->value,
             'hashtags' => array_values($tags),
+            'metadata' => [
+                'source' => $creationSource,
+            ],
             'schedule_type' => 'once',
             'targets' => [array_merge($this->buildTargetData($request, $account), [
                 'media_asset_id' => (int) $request->selectedMediaId,
@@ -414,6 +459,22 @@ class PostController extends Controller
             $this->queueSchedule->refreshDestinationSchedule(
                 $post->targets()->pluck('social_destination_id')->all()
             );
+        }
+
+        if ($defaultStatus === PostStatus::PENDING_APPROVAL && ! $user->isAdmin()) {
+            try {
+                $title = $post->title ?: ('Post #'.$post->id);
+                app(\App\Services\Notifications\InAppNotificationService::class)->notifyAdmins(
+                    'post_pending_approval',
+                    'Post awaiting approval',
+                    "{$user->name} submitted \"{$title}\" for approval.",
+                    'warning',
+                    route('posts.index', ['status' => 'pending_approval']),
+                    ['post_id' => $post->id, 'author_id' => $user->id],
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         $message = $isDraft
@@ -503,6 +564,22 @@ class PostController extends Controller
             );
         }
 
+        if ($newStatus === PostStatus::PENDING_APPROVAL && ! $user->isAdmin()) {
+            try {
+                $title = $post->title ?: ('Post #'.$post->id);
+                app(\App\Services\Notifications\InAppNotificationService::class)->notifyAdmins(
+                    'post_pending_approval',
+                    'Post awaiting approval',
+                    "{$user->name} submitted \"{$title}\" for approval.",
+                    'warning',
+                    route('posts.index', ['status' => 'pending_approval']),
+                    ['post_id' => $post->id, 'author_id' => $user->id],
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         $message = $isDraft
             ? 'Draft updated successfully.'
             : (auth()->user()->isAdmin()
@@ -545,42 +622,21 @@ class PostController extends Controller
             422,
             'Only posts pending approval can be reviewed.'
         );
-        
+
         $request->validate([
             'action' => 'required|in:approve,reject,revision',
             'admin_note' => 'nullable|string',
         ]);
 
-        $action = $request->action;
-        $note = $request->admin_note;
+        $result = $this->postReviews->apply(
+            $post,
+            $request->action,
+            $request->admin_note,
+            'admin:'.auth()->id(),
+            ['source' => 'manual_admin']
+        );
 
-        if ($action === 'approve') {
-            $post->update([
-                'status' => PostStatus::APPROVED,
-                'admin_note' => $note,
-            ]);
-            $post->targets()->update(['status' => PostStatus::SCHEDULED]);
-            $this->queueSchedule->refreshDestinationSchedule(
-                $post->targets()->pluck('social_destination_id')->all()
-            );
-            $msg = 'Post approved and scheduled in the publishing queue!';
-        } elseif ($action === 'reject') {
-            $post->update([
-                'status' => PostStatus::REJECTED,
-                'admin_note' => $note,
-            ]);
-            $post->targets()->update(['status' => PostStatus::CANCELLED]);
-            $msg = 'Post rejected.';
-        } else {
-            $post->update([
-                'status' => PostStatus::NEEDS_REVISION,
-                'admin_note' => $note,
-            ]);
-            $post->targets()->update(['status' => PostStatus::DRAFT]);
-            $msg = 'Post returned to creator for revision.';
-        }
-
-        return redirect()->back()->with('status', $msg);
+        return redirect()->back()->with('status', $result['message']);
     }
 
     public function retryTarget($id)
@@ -694,15 +750,24 @@ class PostController extends Controller
         $endOfCalendar = $currentMonthDate->copy()->endOfMonth()->endOfWeek(Carbon::SATURDAY);
 
         $targetsQuery = PostTarget::with(['post', 'socialDestination']);
-        if (!auth()->user()->isAdmin()) {
+        if (! auth()->user()->isAdmin()) {
             $targetsQuery->whereHas('post', function ($q) {
                 $q->where('user_id', auth()->id());
             });
         }
-        
-        $targets = $targetsQuery->whereBetween('scheduled_at', [$startOfCalendar, $endOfCalendar])
+
+        // Include scheduled posts AND publish-now posts (scheduled_at is often null).
+        $targets = $targetsQuery
+            ->where(function ($q) use ($startOfCalendar, $endOfCalendar) {
+                $q->whereBetween('scheduled_at', [$startOfCalendar, $endOfCalendar])
+                    ->orWhere(function ($q2) use ($startOfCalendar, $endOfCalendar) {
+                        $q2->whereNull('scheduled_at')
+                            ->whereBetween('published_at', [$startOfCalendar, $endOfCalendar]);
+                    });
+            })
             ->get()
-            ->groupBy(fn ($target) => $target->scheduled_at->toDateString());
+            ->filter(fn ($target) => $target->calendarAt() !== null)
+            ->groupBy(fn ($target) => $target->calendarAt()->toDateString());
 
         $daysGrid = [];
         $currentDay = $startOfCalendar->copy();
@@ -711,7 +776,7 @@ class PostController extends Controller
             $dateString = $currentDay->toDateString();
             $daysGrid[] = [
                 'date' => $currentDay->copy(),
-                'isCurrentMonth' => $currentDay->month === (int)$month,
+                'isCurrentMonth' => $currentDay->month === (int) $month,
                 'isToday' => $currentDay->isToday(),
                 'targets' => $targets->get($dateString) ?? collect([]),
             ];
@@ -721,7 +786,7 @@ class PostController extends Controller
         $selectedTarget = null;
         if ($request->query('selected_target')) {
             $stQuery = PostTarget::with(['post', 'socialDestination', 'mediaAsset']);
-            if (!auth()->user()->isAdmin()) {
+            if (! auth()->user()->isAdmin()) {
                 $stQuery->whereHas('post', function ($q) {
                     $q->where('user_id', auth()->id());
                 });

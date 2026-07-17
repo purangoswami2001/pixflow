@@ -8,12 +8,12 @@
         ];
     @endphp
 
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-            <h1 class="font-display text-2xl font-semibold text-[#131b2e]">Dashboard</h1>
+    <div class="pp-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 sm:mb-6">
+        <div class="min-w-0">
+            <h1 class="font-display text-xl sm:text-2xl font-semibold text-[#131b2e]">Dashboard</h1>
             <p class="text-sm text-[#737686] mt-0.5">Hi, {{ explode(' ', $userName)[0] }}</p>
         </div>
-        <div class="flex gap-2">
+        <div class="pp-page-actions">
             <a href="{{ route('posts.index') }}" class="pp-btn-secondary text-sm py-2">Posts</a>
             <a href="{{ route('posts.create') }}" class="pp-btn-primary text-sm py-2">
                 <span class="material-symbols-outlined text-[18px]">add</span>
@@ -23,38 +23,38 @@
     </div>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <div class="pp-card p-4 flex items-center gap-3">
+        <div class="pp-card pp-dash-metric p-4 flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-[#004ac6]/10 text-[#004ac6] flex items-center justify-center shrink-0">
                 <span class="material-symbols-outlined text-[20px]">share</span>
             </div>
-            <div>
+            <div class="min-w-0">
                 <p class="font-display text-2xl font-semibold text-[#131b2e] leading-none">{{ $connectedAccountsCount }}</p>
                 <p class="text-[11px] text-[#737686] mt-1">Profiles</p>
             </div>
         </div>
-        <div class="pp-card p-4 flex items-center gap-3">
+        <div class="pp-card pp-dash-metric p-4 flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-[#4648d4]/10 text-[#4648d4] flex items-center justify-center shrink-0">
                 <span class="material-symbols-outlined text-[20px]">schedule</span>
             </div>
-            <div>
+            <div class="min-w-0">
                 <p class="font-display text-2xl font-semibold text-[#131b2e] leading-none">{{ $scheduledThisWeek }}</p>
                 <p class="text-[11px] text-[#737686] mt-1">This week</p>
             </div>
         </div>
-        <div class="pp-card p-4 flex items-center gap-3">
+        <div class="pp-card pp-dash-metric p-4 flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
                 <span class="material-symbols-outlined text-[20px]">check_circle</span>
             </div>
-            <div>
+            <div class="min-w-0">
                 <p class="font-display text-2xl font-semibold text-[#131b2e] leading-none">{{ $publishedCount }}</p>
                 <p class="text-[11px] text-[#737686] mt-1">Published</p>
             </div>
         </div>
-        <div class="pp-card p-4 flex items-center gap-3 {{ $failedCount > 0 ? 'ring-1 ring-[#ba1a1a]/30' : '' }}">
+        <div class="pp-card pp-dash-metric p-4 flex items-center gap-3 {{ $failedCount > 0 ? 'ring-1 ring-[#ba1a1a]/30' : '' }}">
             <div class="w-10 h-10 rounded-xl bg-[#ba1a1a]/10 text-[#ba1a1a] flex items-center justify-center shrink-0">
                 <span class="material-symbols-outlined text-[20px]">error</span>
             </div>
-            <div>
+            <div class="min-w-0">
                 <p class="font-display text-2xl font-semibold text-[#131b2e] leading-none">{{ $failedCount }}</p>
                 <p class="text-[11px] text-[#737686] mt-1">Failed</p>
             </div>
@@ -104,11 +104,11 @@
                             $tz = $target->timezone ?: 'UTC';
                             $local = $target->scheduled_at->timezone($tz);
                         @endphp
-                        <div class="flex items-center gap-3 p-4 hover:bg-[#faf8ff] transition-colors">
+                        <div class="pp-dash-upcoming-row flex items-center gap-3 p-3 sm:p-4 hover:bg-[#faf8ff] transition-colors">
                             <div class="w-8 h-8 rounded-full bg-[#004ac6]/10 text-[#004ac6] flex items-center justify-center text-xs font-bold shrink-0">
                                 {{ $index + 1 }}
                             </div>
-                            <div class="w-14 h-14 rounded-xl overflow-hidden bg-[#131b2e] shrink-0 border {{ $style['border'] }} flex items-center justify-center">
+                            <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden bg-[#131b2e] shrink-0 border {{ $style['border'] }} flex items-center justify-center">
                                 @if($mediaUrl)
                                     @if($isVideo)
                                         <video src="{{ $mediaUrl }}" class="max-w-full max-h-full object-contain" muted playsinline preload="metadata"></video>
@@ -128,7 +128,7 @@
                                 <p class="text-sm font-semibold text-[#131b2e] truncate">{{ $target->post->title }}</p>
                                 <p class="text-xs text-[#737686] truncate">{{ $target->resolvedPublishLabel() }}</p>
                             </div>
-                            <div class="text-right shrink-0 pl-2 border-l border-[#c3c6d7]/60">
+                            <div class="pp-dash-upcoming-time text-right shrink-0 pl-2 border-l border-[#c3c6d7]/60">
                                 <p class="text-xs font-semibold text-[#131b2e]">{{ $local->format('D, M j') }}</p>
                                 <p class="text-sm font-semibold text-[#004ac6]">{{ $local->format('g:i A') }}</p>
                                 <p class="text-[10px] text-[#737686]">{{ $tz }}</p>

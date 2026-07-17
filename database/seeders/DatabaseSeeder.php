@@ -28,6 +28,9 @@ class DatabaseSeeder extends Seeder
         ]);
         $admin->assignRole('admin');
 
-        $this->call(AutomationSeeder::class);
+        $this->call([
+            ContentLibrarySeeder::class,
+            AutomationSeeder::class,
+        ]);
     }
 }

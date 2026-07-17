@@ -202,29 +202,50 @@
 
             const alt = options.alt || '';
             const caption = options.caption || '';
+            const isVideo = options.type === 'video'
+                || /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url)
+                || (typeof options.mime === 'string' && options.mime.startsWith('video/'));
+
+            const mediaHtml = isVideo
+                ? `<video src="${escapeHtml(url)}" class="pp-lightbox-video" controls autoplay playsinline preload="metadata"></video>`
+                : `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="pp-lightbox-img">`;
 
             root.innerHTML = `
                 <div class="pp-lightbox-backdrop" data-pp-lightbox-close tabindex="-1"></div>
-                <div class="pp-lightbox-panel" role="dialog" aria-modal="true" aria-label="Full size image">
+                <div class="pp-lightbox-panel" role="dialog" aria-modal="true" aria-label="${isVideo ? 'Video player' : 'Full size image'}">
                     <button type="button" class="pp-lightbox-close" data-pp-lightbox-close aria-label="Close">
                         <span class="material-symbols-outlined">close</span>
                     </button>
                     <div class="pp-lightbox-stage">
-                        <img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="pp-lightbox-img">
+                        ${mediaHtml}
                     </div>
                     ${caption ? `<p class="pp-lightbox-caption">${escapeHtml(caption)}</p>` : ''}
                     <p class="pp-lightbox-dimensions" data-pp-lightbox-dimensions></p>
                 </div>`;
 
-            const img = root.querySelector('.pp-lightbox-img');
             const dimEl = root.querySelector('[data-pp-lightbox-dimensions]');
-            const setDimensions = () => {
-                if (!img || !dimEl || !img.naturalWidth) return;
-                dimEl.textContent = `${img.naturalWidth} × ${img.naturalHeight}px`;
-            };
-            if (img) {
-                if (img.complete) setDimensions();
-                else img.addEventListener('load', setDimensions);
+            if (isVideo) {
+                const video = root.querySelector('.pp-lightbox-video');
+                const setDimensions = () => {
+                    if (!video || !dimEl || !video.videoWidth) return;
+                    dimEl.textContent = `${video.videoWidth} × ${video.videoHeight}px`;
+                };
+                if (video) {
+                    video.addEventListener('loadedmetadata', setDimensions);
+                    video.addEventListener('error', () => {
+                        if (dimEl) dimEl.textContent = 'This video could not be played in the browser.';
+                    });
+                }
+            } else {
+                const img = root.querySelector('.pp-lightbox-img');
+                const setDimensions = () => {
+                    if (!img || !dimEl || !img.naturalWidth) return;
+                    dimEl.textContent = `${img.naturalWidth} × ${img.naturalHeight}px`;
+                };
+                if (img) {
+                    if (img.complete) setDimensions();
+                    else img.addEventListener('load', setDimensions);
+                }
             }
 
             const close = () => this.closeLightbox();
@@ -259,6 +280,14 @@
                 root._ppLightboxKeyHandler = null;
             }
 
+            root.querySelectorAll('video').forEach((video) => {
+                try {
+                    video.pause();
+                    video.removeAttribute('src');
+                    video.load();
+                } catch (e) { /* ignore */ }
+            });
+
             root.classList.remove('is-open');
             root.setAttribute('aria-hidden', 'true');
             document.body.classList.remove('pp-modal-open');
@@ -289,6 +318,8 @@
                 this.openLightbox(url, {
                     alt: trigger.dataset.ppLightboxAlt || trigger.getAttribute('alt') || '',
                     caption: trigger.dataset.ppLightboxCaption || '',
+                    type: trigger.dataset.ppLightboxType || '',
+                    mime: trigger.dataset.ppLightboxMime || '',
                 });
             });
         },
@@ -297,6 +328,212 @@
             this.flashFromPage();
             this.bindConfirmForms();
             this.bindLightbox();
+            this.bindReveals();
+            this.bindAutoMobilePanels();
+            this.bindPaginationNav();
+        },
+
+        bindPaginationNav() {
+            const appBase = (document.querySelector('meta[name="app-base"]')?.content || '').replace(/\/$/, '');
+
+            const resolveAppUrl = (url) => {
+                if (!url) return url;
+                try {
+                    const resolved = new URL(url, window.location.href);
+                    if (appBase) {
+                        const base = new URL(appBase);
+                        if (resolved.origin === base.origin) {
+                            const basePath = base.pathname.replace(/\/$/, '') || '';
+                            if (basePath
+                                && resolved.pathname !== basePath
+                                && !resolved.pathname.startsWith(`${basePath}/`)) {
+                                resolved.pathname = `${basePath}${resolved.pathname}`;
+                            }
+                        }
+                    }
+                    return resolved.toString();
+                } catch (e) {
+                    return url;
+                }
+            };
+
+            const scrollToList = (list) => {
+                if (!list) return;
+                const topbar = document.querySelector('.pp-topbar');
+                const offset = (topbar?.offsetHeight || 0) + 12;
+                const y = list.getBoundingClientRect().top + window.scrollY - offset;
+                window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+            };
+
+            const navigate = async (url, pagRoot, listTarget) => {
+                const list = listTarget ? document.querySelector(listTarget) : null;
+                const targetUrl = resolveAppUrl(url);
+
+                if (!list || !pagRoot) {
+                    window.location.href = targetUrl;
+                    return;
+                }
+
+                pagRoot.classList.add('is-busy');
+
+                try {
+                    const res = await fetch(targetUrl, {
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            Accept: 'text/html',
+                        },
+                        credentials: 'same-origin',
+                    });
+                    if (!res.ok) throw new Error('Pagination request failed');
+
+                    const html = await res.text();
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    const incomingList = doc.querySelector(listTarget);
+                    const incomingPag = doc.querySelector(`[data-pp-pagination][data-pp-list-target="${listTarget}"]`);
+
+                    if (!incomingList) throw new Error('List not found in response');
+
+                    list.replaceChildren(...Array.from(incomingList.children).map((child) => document.importNode(child, true)));
+
+                    if (incomingPag) {
+                        pagRoot.replaceWith(document.importNode(incomingPag, true));
+                    }
+
+                    if (window.history?.pushState) {
+                        window.history.pushState({ ppPagination: true }, '', targetUrl);
+                    }
+
+                    scrollToList(list);
+                    document.dispatchEvent(new CustomEvent('pp:list-updated'));
+                    this.bindReveals();
+                } catch (err) {
+                    console.error(err);
+                    window.location.href = targetUrl;
+                }
+            };
+
+            document.addEventListener('click', (event) => {
+                const link = event.target.closest('.pp-pagination-nav a');
+                if (!link) return;
+
+                const pagRoot = link.closest('[data-pp-pagination]');
+                const listTarget = pagRoot?.getAttribute('data-pp-list-target');
+                if (!pagRoot || !listTarget) return;
+
+                event.preventDefault();
+                navigate(link.href, pagRoot, listTarget);
+            });
+
+            document.addEventListener('change', (event) => {
+                const select = event.target.closest('.pp-pagination-perpage select');
+                if (!select) return;
+
+                const form = select.closest('form');
+                const pagRoot = select.closest('[data-pp-pagination]');
+                const listTarget = pagRoot?.getAttribute('data-pp-list-target');
+                if (!form || !pagRoot || !listTarget) return;
+
+                event.preventDefault();
+
+                const url = new URL(form.action || window.location.href, window.location.href);
+                const params = new URLSearchParams(new FormData(form));
+                url.search = params.toString();
+
+                ['page', 'pending_page', 'reviewed_page'].forEach((key) => url.searchParams.delete(key));
+
+                navigate(url.toString(), pagRoot, listTarget);
+            });
+
+            window.addEventListener('popstate', () => {
+                window.location.reload();
+            });
+        },
+
+        bindAutoMobilePanels() {
+            const isDesktop = () => window.matchMedia('(min-width: 1280px)').matches;
+
+            const activate = (page, panelId, { scroll = true } = {}) => {
+                if (!page || !panelId) return;
+                const radio = page.querySelector(`.pp-auto-panel-radio[value="${CSS.escape(panelId)}"]`);
+                if (radio) {
+                    radio.checked = true;
+                }
+                page.querySelectorAll('[data-pp-auto-panel-id]').forEach((panel) => {
+                    panel.classList.toggle('is-open', panel.getAttribute('data-pp-auto-panel-id') === panelId);
+                });
+                page.querySelectorAll('.pp-auto-mbar-btn').forEach((btn) => {
+                    const input = btn.querySelector('.pp-auto-panel-radio');
+                    const active = input && input.value === panelId;
+                    btn.classList.toggle('is-active', !!active);
+                });
+                if (scroll && !isDesktop()) {
+                    page.querySelector(`[data-pp-auto-panel-id="${panelId}"]`)
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            };
+
+            document.addEventListener('click', (e) => {
+                const trigger = e.target.closest('[data-pp-auto-panel]');
+                if (!trigger) return;
+                // Ignore radios themselves (label click already checks them)
+                if (trigger.matches('.pp-auto-panel-radio')) return;
+                const page = trigger.closest('.pp-automation-page');
+                if (!page || isDesktop()) return;
+                const panelId = trigger.getAttribute('data-pp-auto-panel');
+                if (!panelId) return;
+                e.preventDefault();
+                activate(page, panelId);
+            });
+
+            document.addEventListener('change', (e) => {
+                const radio = e.target.closest?.('.pp-auto-panel-radio');
+                if (!radio) return;
+                const page = radio.closest('.pp-automation-page');
+                if (!page || isDesktop()) return;
+                activate(page, radio.value, { scroll: true });
+            });
+        },
+
+        bindReveals() {
+            const nodes = Array.from(document.querySelectorAll('.pp-reveal:not(.is-visible)'));
+            if (!nodes.length) return;
+
+            const reveal = (el) => el.classList.add('is-visible');
+
+            // Safari / iOS often fails to fire IO for above-the-fold opacity:0 nodes.
+            const inView = (el) => {
+                const r = el.getBoundingClientRect();
+                const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+                const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                return r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
+            };
+
+            nodes.filter(inView).forEach(reveal);
+
+            const remaining = nodes.filter((el) => !el.classList.contains('is-visible'));
+            if (!remaining.length) return;
+
+            if (!('IntersectionObserver' in window)) {
+                remaining.forEach(reveal);
+                return;
+            }
+
+            const io = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (!entry.isIntersecting && entry.intersectionRatio <= 0) return;
+                    reveal(entry.target);
+                    io.unobserve(entry.target);
+                });
+            }, { threshold: [0, 0.01, 0.1], rootMargin: '80px 0px 80px 0px' });
+
+            remaining.forEach((el) => io.observe(el));
+
+            // Fallback if Safari never reports intersections
+            window.setTimeout(() => {
+                remaining.forEach((el) => {
+                    if (!el.classList.contains('is-visible')) reveal(el);
+                });
+            }, 600);
         },
     };
 

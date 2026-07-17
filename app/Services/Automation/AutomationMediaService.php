@@ -43,12 +43,15 @@ class AutomationMediaService
         $image = $manager->decodePath(Storage::disk('public')->path($staging));
         $actual = $this->normalizeToPresetIfNeeded($image, $preset, $platform);
 
+        // Same Canva-style filename + embedded metadata as manual/semi-AI finalize.
         $designName = $this->metadata->nextAvailableFileName('media/ai/'.now()->format('Y/m'));
         $finalPath = 'media/ai/'.now()->format('Y/m').'/'.$designName;
         Storage::disk('public')->makeDirectory(dirname($finalPath));
         $absolutePath = Storage::disk('public')->path($finalPath);
         $image->save($absolutePath);
-        $this->metadata->applyCanvaMetadata($absolutePath);
+        $finalized = $this->metadata->finalizeStoredImage($finalPath);
+        $finalPath = $finalized['file_path'];
+        $designName = $finalized['original_name'];
 
         Storage::disk('public')->delete($staging);
         Storage::disk('local')->delete($localPath);
@@ -60,7 +63,7 @@ class AutomationMediaService
             'original_name' => $designName,
             'mime_type' => 'image/png',
             'media_type' => 'image',
-            'file_size' => Storage::disk('public')->size($finalPath),
+            'file_size' => $finalized['file_size'],
             'width' => $actual['width'],
             'height' => $actual['height'],
             'preset_key' => $presetKey,

@@ -21,6 +21,24 @@ it('builds facebook photo payload with caption and published flag only', functio
         ->and($payload)->not->toHaveKey('name');
 });
 
+it('builds facebook video payload with description title and published flag', function () {
+    $service = new PlatformPostFieldsService();
+    $target = new PostTarget([]);
+    $target->setRelation('post', new Post([
+        'title' => 'Promo clip',
+        'caption' => 'Watch this',
+        'hashtags' => ['#video'],
+    ]));
+
+    $payload = $service->buildFacebookVideoApiPayload($target);
+
+    expect($payload['description'])->toContain('Watch this')
+        ->and($payload['description'])->toContain('#video')
+        ->and($payload['title'])->toBe('Promo clip')
+        ->and($payload['published'])->toBeTrue()
+        ->and($payload)->not->toHaveKey('caption');
+});
+
 it('builds pinterest payload with title description and optional link', function () {
     $service = new PlatformPostFieldsService();
     $target = new PostTarget([
@@ -41,4 +59,18 @@ it('builds pinterest payload with title description and optional link', function
         ->and($payload['description'])->toContain('Pin description')
         ->and($payload['description'])->toContain('#sale')
         ->and($payload['link'])->toBe('https://example.com');
+});
+
+it('does not duplicate hashtags already present in the caption', function () {
+    $service = new PlatformPostFieldsService();
+    $post = new Post([
+        'caption' => "Hello world\n\n#CorporateLife #OfficeHumor",
+        'hashtags' => ['#CorporateLife', '#OfficeHumor', '#CareerGrowth'],
+    ]);
+
+    $caption = $service->buildCaptionWithHashtags($post);
+
+    expect(substr_count(mb_strtolower($caption), '#corporatelife'))->toBe(1)
+        ->and(substr_count(mb_strtolower($caption), '#officehumor'))->toBe(1)
+        ->and($caption)->toContain('#CareerGrowth');
 });

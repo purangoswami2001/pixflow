@@ -26,17 +26,18 @@ class CursorInfographicImageService
      */
     protected function resolveLayout(string $designBrief, int $width, int $height): array
     {
-        $system = 'You are a social media infographic layout designer for wellness brands. '
-            . 'Return valid JSON only — no markdown.';
+        $system = 'You are a social media infographic layout designer. '
+            . 'Follow the niche and tone in the brief — do not force wellness or feminine aesthetics unless the brief implies them. '
+            . 'Never mention Canva or other design-tool brands. Return valid JSON only — no markdown.';
 
         $user = "Convert this design brief into a structured infographic layout for a {$width}x{$height}px canvas.\n\n"
             . "Brief:\n".mb_substr(trim($designBrief), 0, 3500)."\n\n"
             . "Return JSON with exactly these keys:\n"
             . "- title (string, main headline, max 80 chars, may use \\n for two lines)\n"
             . "- subtitle (optional string, tagline under title, max 60 chars)\n"
-            . "- sections (array of 3–5 objects, each with: heading string max 40 chars, body string max 110 chars, accent one of: sage, blush, lavender, cream)\n"
+            . "- sections (array of 3–5 objects, each with: heading string max 40 chars, body string max 110 chars, accent one of: sage, blush, lavender, cream, navy, charcoal, terracotta)\n"
             . "- footer (optional string, short CTA max 70 chars)\n\n"
-            . 'Use concise, scannable wellness copy. Alternate accent colors across sections.';
+            . 'Use concise, scannable copy matching the brief. Alternate accent colors across sections.';
 
         try {
             $data = $this->cursor->chatJson($system, $user);

@@ -40,6 +40,24 @@ class SocialAccountController extends Controller
         ]);
     }
 
+    public function connect(Request $request)
+    {
+        $platformSandboxes = collect(SettingsService::allPlatformsFromEnv())
+            ->mapWithKeys(fn ($config, $provider) => [$provider => (bool) ($config['sandbox'] ?? false)])
+            ->all();
+
+        $selected = $request->query('provider');
+        if (! in_array($selected, ['facebook', 'instagram', 'pinterest'], true)) {
+            $selected = null;
+        }
+
+        return view('accounts.connect', [
+            'mockMode' => SettingsService::usesMockMode(),
+            'platformSandboxes' => $platformSandboxes,
+            'selectedProvider' => $selected,
+        ]);
+    }
+
     public function connectMock(Request $request)
     {
         $request->validate([

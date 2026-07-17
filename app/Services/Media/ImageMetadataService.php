@@ -29,9 +29,15 @@ class ImageMetadataService
         return "{$base} ({$variant}).png";
     }
 
-    public function nextAvailableFileName(string $directory): string
+    public function nextAvailableFileName(string $directory, string $extension = 'png'): string
     {
-        $preferred = (string) config('media.canva.file_name', 'Untitled design.png');
+        $extension = strtolower(ltrim($extension, '.'));
+        if (! in_array($extension, ['png', 'jpg', 'jpeg', 'webp'], true)) {
+            $extension = 'png';
+        }
+
+        $preferredBase = pathinfo((string) config('media.canva.file_name', 'Untitled design.png'), PATHINFO_FILENAME);
+        $preferred = "{$preferredBase}.{$extension}";
         $disk = \Illuminate\Support\Facades\Storage::disk('public');
         $directory = trim($directory, '/');
 
@@ -39,14 +45,64 @@ class ImageMetadataService
             return $preferred;
         }
 
-        $base = pathinfo($preferred, PATHINFO_FILENAME);
         $variant = 1;
 
-        while ($disk->exists("{$directory}/{$base} ({$variant}).png")) {
+        while ($disk->exists("{$directory}/{$preferredBase} ({$variant}).{$extension}")) {
             $variant++;
         }
 
-        return "{$base} ({$variant}).png";
+        return "{$preferredBase} ({$variant}).{$extension}";
+    }
+
+    /**
+     * Apply Canva-style embedded metadata and rename to Untitled design.* like automation.
+     *
+     * @return array{file_path: string, original_name: string, file_size: int}
+     */
+    public function finalizeStoredImage(string $filePath, string $diskName = 'public'): array
+    {
+        $disk = \Illuminate\Support\Facades\Storage::disk($diskName);
+
+        if (! $disk->exists($filePath)) {
+            throw new \RuntimeException("Image not found: {$filePath}");
+        }
+
+        $absolutePath = $disk->path($filePath);
+        $this->applyCanvaMetadata($absolutePath);
+
+        $directory = trim(str_replace('\\', '/', dirname($filePath)), '/.');
+        if ($directory === '' || $directory === '.') {
+            $directory = 'media';
+        }
+
+        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION) ?: 'png');
+        $currentName = basename($filePath);
+        $preferredBase = pathinfo((string) config('media.canva.file_name', 'Untitled design.png'), PATHINFO_FILENAME);
+        $currentBase = pathinfo($currentName, PATHINFO_FILENAME);
+        $normalizedBase = preg_replace('/ \(\d+\)$/', '', $currentBase) ?? $currentBase;
+
+        // Already using Canva-style naming (automation path) — keep path, just refresh size.
+        if (strcasecmp($normalizedBase, $preferredBase) === 0) {
+            return [
+                'file_path' => $filePath,
+                'original_name' => $currentName,
+                'file_size' => $disk->size($filePath),
+            ];
+        }
+
+        $designName = $this->nextAvailableFileName($directory, $extension);
+        $newPath = "{$directory}/{$designName}";
+
+        $disk->makeDirectory($directory);
+        $disk->move($filePath, $newPath);
+        $absolutePath = $disk->path($newPath);
+        $this->applyCanvaMetadata($absolutePath);
+
+        return [
+            'file_path' => $newPath,
+            'original_name' => $designName,
+            'file_size' => $disk->size($newPath),
+        ];
     }
 
     public function applyCanvaMetadata(string $absolutePath): void

@@ -1,14 +1,52 @@
-@props(['paginator', 'perPage' => 20, 'perPageOptions' => [12, 20, 40, 60]])
+@props([
+    'paginator',
+    'perPage' => 10,
+    'perPageOptions' => [10, 20, 40, 50],
+    'listTarget' => null, // CSS selector for smooth AJAX page navigation
+    'pageName' => 'page',
+])
 
-@if ($paginator->total() > 0)
-    <div class="flex flex-col sm:flex-row flex-wrap items-center justify-between gap-4 mt-8 pt-6 border-t border-[#c3c6d7]">
-        <div class="flex flex-wrap items-center gap-4 text-sm text-[#737686]">
-            <span>
-                Showing <strong class="text-[#131b2e]">{{ $paginator->firstItem() }}–{{ $paginator->lastItem() }}</strong>
-                of <strong class="text-[#131b2e]">{{ $paginator->total() }}</strong>
-            </span>
-            <form method="GET" class="flex items-center gap-2">
-                @foreach(request()->except(['per_page', 'page']) as $key => $value)
+@php
+    $total = (int) $paginator->total();
+    $hasPages = $paginator->hasPages();
+    $hasMore = $paginator->hasMorePages();
+
+    // Rebuild page URLs from current path so subdirectory installs (ngrok /pixflow/public) stay intact.
+    $pageQuery = function (int $page) use ($pageName) {
+        $query = request()->query();
+        $query[$pageName] = $page;
+        $qs = http_build_query($query);
+
+        return url()->current().($qs !== '' ? '?'.$qs : '');
+    };
+
+    $nextUrl = $hasMore ? $pageQuery($paginator->currentPage() + 1) : null;
+    $prevUrl = ! $paginator->onFirstPage() ? $pageQuery($paginator->currentPage() - 1) : null;
+    $uid = 'pp-pag-'.substr(md5(($listTarget ?? 'list').$pageName.$paginator->currentPage()), 0, 8);
+@endphp
+
+@if ($total > 0)
+    <div class="pp-pagination"
+         data-pp-pagination="{{ $uid }}"
+         data-pp-list-target="{{ $listTarget }}"
+         data-current-page="{{ $paginator->currentPage() }}"
+         data-last-page="{{ $paginator->lastPage() }}">
+
+        <div class="pp-pagination-meta">
+            <p class="pp-pagination-range" data-pp-pagination-range>
+                <span class="pp-pagination-range-desktop" data-pp-range-desktop>
+                    Showing
+                    <strong>{{ $paginator->firstItem() }}–{{ $paginator->lastItem() }}</strong>
+                    of
+                    <strong data-pp-range-total>{{ $total }}</strong>
+                </span>
+                <span class="pp-pagination-range-mobile" data-pp-range-mobile>
+                    <strong data-pp-range-total-mobile>{{ $total }}</strong> records
+                </span>
+            </p>
+
+            <form method="GET" class="pp-pagination-perpage" action="{{ url()->current() }}">
+                @foreach(request()->except(['per_page', $pageName]) as $key => $value)
                     @if(is_array($value))
                         @foreach($value as $v)
                             <input type="hidden" name="{{ $key }}[]" value="{{ $v }}">
@@ -17,8 +55,10 @@
                         <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                     @endif
                 @endforeach
-                <label for="per_page" class="text-xs font-semibold uppercase tracking-wide">Per page</label>
-                <select name="per_page" id="per_page" onchange="this.form.submit()" class="pp-input py-1.5 px-2 text-sm w-auto min-w-[4.5rem]">
+                <label for="{{ $uid }}-per-page" class="pp-pagination-perpage-label">Per page</label>
+                <select name="per_page"
+                        id="{{ $uid }}-per-page"
+                        class="pp-input pp-pagination-select">
                     @foreach($perPageOptions as $option)
                         <option value="{{ $option }}" @selected((int) $perPage === (int) $option)>{{ $option }}</option>
                     @endforeach
@@ -26,26 +66,36 @@
             </form>
         </div>
 
-        @if ($paginator->hasPages())
-            <nav class="flex items-center gap-1" aria-label="Pagination">
+        @if ($hasPages)
+            <nav class="pp-pagination-nav" aria-label="Pagination">
                 @if ($paginator->onFirstPage())
-                    <span class="px-3 py-1.5 text-sm text-[#c3c6d7] border border-[#c3c6d7] rounded-lg cursor-not-allowed">Prev</span>
+                    <span class="pp-pagination-btn is-disabled" aria-disabled="true">
+                        <span class="material-symbols-outlined">chevron_left</span>
+                    </span>
                 @else
-                    <a href="{{ $paginator->previousPageUrl() }}" class="px-3 py-1.5 text-sm text-[#434655] border border-[#c3c6d7] rounded-lg hover:bg-[#f2f3ff] transition-colors">Prev</a>
+                    <a href="{{ $prevUrl }}" class="pp-pagination-btn" aria-label="Previous page">
+                        <span class="material-symbols-outlined">chevron_left</span>
+                    </a>
                 @endif
 
-                @foreach ($paginator->getUrlRange(max(1, $paginator->currentPage() - 2), min($paginator->lastPage(), $paginator->currentPage() + 2)) as $page => $url)
-                    @if ($page == $paginator->currentPage())
-                        <span class="px-3 py-1.5 text-sm font-semibold bg-[#004ac6] text-white border border-[#004ac6] rounded-lg">{{ $page }}</span>
-                    @else
-                        <a href="{{ $url }}" class="px-3 py-1.5 text-sm text-[#434655] border border-[#c3c6d7] rounded-lg hover:bg-[#f2f3ff] transition-colors">{{ $page }}</a>
-                    @endif
-                @endforeach
+                <div class="pp-pagination-pages">
+                    @for ($page = max(1, $paginator->currentPage() - 2); $page <= min($paginator->lastPage(), $paginator->currentPage() + 2); $page++)
+                        @if ($page == $paginator->currentPage())
+                            <span class="pp-pagination-page is-active" aria-current="page">{{ $page }}</span>
+                        @else
+                            <a href="{{ $pageQuery($page) }}" class="pp-pagination-page">{{ $page }}</a>
+                        @endif
+                    @endfor
+                </div>
 
-                @if ($paginator->hasMorePages())
-                    <a href="{{ $paginator->nextPageUrl() }}" class="px-3 py-1.5 text-sm text-[#434655] border border-[#c3c6d7] rounded-lg hover:bg-[#f2f3ff] transition-colors">Next</a>
+                @if ($hasMore)
+                    <a href="{{ $nextUrl }}" class="pp-pagination-btn" aria-label="Next page">
+                        <span class="material-symbols-outlined">chevron_right</span>
+                    </a>
                 @else
-                    <span class="px-3 py-1.5 text-sm text-[#c3c6d7] border border-[#c3c6d7] rounded-lg cursor-not-allowed">Next</span>
+                    <span class="pp-pagination-btn is-disabled" aria-disabled="true">
+                        <span class="material-symbols-outlined">chevron_right</span>
+                    </span>
                 @endif
             </nav>
         @endif

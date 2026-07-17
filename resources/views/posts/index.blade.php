@@ -55,25 +55,31 @@
         <x-slot name="actions">
             <a href="{{ route('posts.create') }}" class="pp-btn-primary">
                 <span class="material-symbols-outlined text-[18px]">add</span>
-                Create Post
+                <span class="pp-action-label">Create Post</span>
             </a>
         </x-slot>
     </x-pp-page-header>
 
-    <form method="GET" action="{{ route('posts.index') }}" class="pp-card p-4 mb-6">
-        <div class="flex flex-wrap items-end gap-4">
-            <div class="flex-1 min-w-[220px]">
+    <form method="GET" action="{{ route('posts.index') }}" class="pp-filter-bar pp-card p-4 mb-5 sm:mb-6">
+        <button type="button" class="pp-filter-toggle pp-btn-secondary text-sm mb-3" onclick="this.nextElementSibling.classList.toggle('is-collapsed'); this.querySelector('.pp-filter-caret').classList.toggle('rotate-180');">
+            <span class="material-symbols-outlined text-[18px]">tune</span>
+            Filters
+            @if($hasFilters)<span class="pp-status-chip bg-[#004ac6]/10 text-[#004ac6] ml-1">On</span>@endif
+            <span class="material-symbols-outlined text-[18px] pp-filter-caret transition-transform">expand_more</span>
+        </button>
+        <div class="pp-filter-body is-collapsed grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            <div class="md:col-span-5">
                 <label for="postSearch" class="text-xs font-semibold text-[#737686] uppercase tracking-wide block mb-1.5">Search</label>
                 <div class="relative">
                     <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#737686] text-[18px] pointer-events-none">search</span>
                     <input type="search" name="search" id="postSearch" value="{{ $search }}"
                         placeholder="Title, caption, tags, account, author…"
-                        class="pp-input w-full pl-10 py-2 text-sm">
+                        class="pp-input has-icon-left w-full text-sm">
                 </div>
             </div>
-            <div class="w-full sm:w-44">
+            <div class="md:col-span-3">
                 <label for="postStatus" class="text-xs font-semibold text-[#737686] uppercase tracking-wide block mb-1.5">Status</label>
-                <select name="status" id="postStatus" class="pp-input w-full py-2 text-sm">
+                <select name="status" id="postStatus" class="pp-input w-full text-sm">
                     @foreach($statusOptions as $value => $label)
                         <option value="{{ $value }}" @selected($statusFilter === $value)>
                             {{ $label }}
@@ -84,9 +90,9 @@
                     @endforeach
                 </select>
             </div>
-            <div class="w-full sm:w-40">
+            <div class="md:col-span-2">
                 <label for="postChannel" class="text-xs font-semibold text-[#737686] uppercase tracking-wide block mb-1.5">Channel</label>
-                <select name="channel" id="postChannel" class="pp-input w-full py-2 text-sm">
+                <select name="channel" id="postChannel" class="pp-input w-full text-sm">
                     <option value="all" @selected($channelFilter === 'all')>All channels</option>
                     @foreach($channels as $channel)
                         <option value="{{ $channel['key'] }}" @selected($channelFilter === $channel['key'])>{{ $channel['name'] }}</option>
@@ -94,18 +100,33 @@
                 </select>
             </div>
             <input type="hidden" name="per_page" value="{{ request('per_page', $perPage) }}">
-            <div class="flex gap-2 w-full sm:w-auto">
-                <button type="submit" class="pp-btn-primary py-2 text-sm flex-1 sm:flex-none">
+            <div class="md:col-span-2 flex gap-2">
+                <button type="submit" class="pp-btn-primary text-sm flex-1">
                     <span class="material-symbols-outlined text-[18px]">filter_alt</span>
                     Apply
                 </button>
                 @if($hasFilters)
-                    <a href="{{ route('posts.index', ['per_page' => request('per_page', $perPage)]) }}" class="pp-btn-secondary py-2 text-sm flex-1 sm:flex-none text-center">
-                        Clear
+                    <a href="{{ route('posts.index', ['per_page' => request('per_page', $perPage)]) }}" class="pp-btn-secondary text-sm px-3" title="Clear filters">
+                        <span class="material-symbols-outlined text-[18px]">close</span>
                     </a>
                 @endif
             </div>
         </div>
+
+        @if($hasFilters)
+            <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[#c3c6d7]/60">
+                <span class="text-[11px] font-semibold uppercase tracking-wide text-[#737686]">Active</span>
+                @if($search !== '')
+                    <span class="pp-status-chip bg-[#f2f3ff] text-[#434655] normal-case">Search: “{{ \Illuminate\Support\Str::limit($search, 24) }}”</span>
+                @endif
+                @if($statusFilter !== 'all')
+                    <span class="pp-status-chip bg-[#004ac6]/10 text-[#004ac6]">{{ $statusOptions[$statusFilter] ?? $statusFilter }}</span>
+                @endif
+                @if($channelFilter !== 'all')
+                    <span class="pp-status-chip bg-[#004ac6]/10 text-[#004ac6]">{{ ucfirst($channelFilter) }}</span>
+                @endif
+            </div>
+        @endif
     </form>
 
     @if($posts->isEmpty())
@@ -116,7 +137,7 @@
             <a href="{{ route('posts.create') }}" class="pp-btn-primary">Create a post</a>
         </div>
     @else
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="pp-posts-list" data-pp-paginated-list>
             @foreach($posts as $post)
                 @php
                     $target = $post->targets->first();
@@ -146,6 +167,8 @@
                         <span class="pp-status-chip {{ $chipClass }} text-[9px] py-0 px-1.5 shrink-0">{{ $statusLabels[$status] ?? $status }}</span>
                         @if(($post->metadata['source'] ?? '') === 'automation')
                             <span class="pp-status-chip bg-violet-50 text-violet-700 text-[8px] py-0 px-1 shrink-0" title="AI Agent">AI</span>
+                        @elseif(($post->metadata['source'] ?? '') === 'semi-ai')
+                            <span class="pp-status-chip bg-violet-50 text-violet-700 text-[8px] py-0 px-1 shrink-0" title="Created with Semi-AI Assist">AI Assisted</span>
                         @endif
                     </div>
 
@@ -270,10 +293,12 @@
             @endforeach
         </div>
 
-        <x-pp-pagination :paginator="$posts" :per-page="$perPage" :per-page-options="[12, 20, 40, 60]" />
+        <x-pp-pagination :paginator="$posts" :per-page="$perPage" :per-page-options="[8, 10, 20, 40, 50]" list-target="#pp-posts-list" />
     @endif
 
     @if($posts->isNotEmpty())
-        <x-post-view-modal :posts="$posts" :is-admin="$isAdmin" />
+        <x-post-view-modal :posts="$posts" :is-admin="$isAdmin" :view-post="$viewPost ?? null" />
+    @elseif($viewPost ?? null)
+        <x-post-view-modal :posts="collect([$viewPost])" :is-admin="$isAdmin" :view-post="$viewPost" />
     @endif
 </x-app-layout>

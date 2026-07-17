@@ -331,6 +331,26 @@ class AutomationPipelineService
         ]);
 
         AutomationGenerationLogger::step('post_created', ['post_id' => $post->id]);
+
+        try {
+            $notifications = app(\App\Services\Notifications\InAppNotificationService::class);
+            $title = $post->title ?: ('Post #'.$post->id);
+            $notifications->notifyAdmins(
+                'post_created_ai',
+                'AI agent created a post',
+                "\"{$title}\" is ready for review ({$item->platform}).",
+                'info',
+                route('admin.automation.auto-review'),
+                ['post_id' => $post->id, 'run_item_id' => $item->id, 'platform' => $item->platform],
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        if (config('automation.auto_review.enabled') && config('automation.auto_review.dispatch_after_create', true)) {
+            \App\Jobs\AutoReviewPostJob::dispatch($post->id);
+            AutoReviewLogger::info('Dispatched auto-review after post create', ['post_id' => $post->id]);
+        }
     }
 
     protected function detectUnsafeClaim(string $text): ?string

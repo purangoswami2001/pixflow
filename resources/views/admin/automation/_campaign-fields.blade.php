@@ -13,6 +13,8 @@
 @endphp
 
 <div class="pp-campaign-form-sections">
+    <div class="pp-auto-panel is-open" data-pp-auto-panel-id="basics">
+    <div class="pp-campaign-form-top">
     <section class="pp-campaign-form-section">
         <div class="pp-campaign-settings-card-head">
             <span class="material-symbols-outlined">tune</span>
@@ -69,7 +71,20 @@
             </x-automation-field>
         </div>
     </section>
+    </div>
 
+    <section class="pp-campaign-form-section pp-campaign-form-section--last">
+        <label class="pp-campaign-active-row flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" name="is_active" value="1" class="mt-0.5 accent-[#004ac6]" @checked(old('is_active', $c?->is_active ?? true))>
+            <span>
+                <strong class="text-sm text-[var(--pp-text)] block">Active campaign</strong>
+                <span class="text-xs text-[var(--pp-text-muted)]">Runs on schedule and with Run now</span>
+            </span>
+        </label>
+    </section>
+    </div>{{-- /basics panel --}}
+
+    <div class="pp-auto-panel" data-pp-auto-panel-id="channels">
     <section class="pp-campaign-form-section">
         <div class="pp-campaign-settings-card-head">
             <span class="material-symbols-outlined">hub</span>
@@ -216,16 +231,7 @@
             </div>
         </div>
     </section>
-
-    <section class="pp-campaign-form-section pp-campaign-form-section--last">
-        <label class="pp-campaign-active-row flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" name="is_active" value="1" class="mt-0.5 accent-[#004ac6]" @checked(old('is_active', $c?->is_active ?? true))>
-            <span>
-                <strong class="text-sm text-[#131b2e] block">Active campaign</strong>
-                <span class="text-xs text-[#737686]">Runs on schedule and with Run now</span>
-            </span>
-        </label>
-    </section>
+    </div>{{-- /channels panel --}}
 </div>
 
 @once

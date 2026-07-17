@@ -1,84 +1,183 @@
 <x-app-layout>
-    <div class="mb-4">
-        <h1 class="h3 fw-bold text-dark mb-1">Account Profile Settings</h1>
-        <p class="text-muted mb-0 small">Update your name, email, account password, or delete your registration.</p>
-    </div>
+    <x-pp-page-header
+        title="Account Settings"
+        description="Update your name, email, and password, or delete your account.">
+        <x-slot name="breadcrumb">
+            <span>Account</span><span>/</span><span class="text-[#004ac6]">Profile</span>
+        </x-slot>
+    </x-pp-page-header>
 
-    <div class="row g-4" style="max-width: 700px;">
-        <!-- Card 1: Profile Info -->
-        <div class="col-12">
-            <div class="card border-0 shadow-sm p-4">
-                <h4 class="h5 fw-bold text-dark mb-1">Profile Information</h4>
-                <p class="text-muted small mb-4">Update your account's profile name and email address.</p>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {{-- Profile information --}}
+        <div class="pp-card p-6 lg:col-span-3 xl:col-span-3">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <div class="w-9 h-9 rounded-lg bg-[#004ac6]/10 text-[#004ac6] flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-[20px]">person</span>
+                        </div>
+                        <h2 class="font-display text-base font-semibold text-[#131b2e]">Profile Information</h2>
+                    </div>
+                    <p class="text-sm text-[#737686]">Update your account's name and email address.</p>
+                </div>
 
-                <form method="POST" action="{{ route('profile.update') }}" class="space-y-3">
+                <form method="POST" action="{{ route('profile.update') }}" class="space-y-4">
                     @csrf
                     @method('patch')
 
-                    <div class="mb-3">
-                        <label for="profile_name" class="form-label small fw-bold text-muted text-uppercase mb-1">Name</label>
-                        <input type="text" name="name" id="profile_name" class="form-control @error('name') is-invalid @enderror" value="{{ old('name', auth()->user()->name) }}" required autocomplete="name">
+                    <div>
+                        <label for="profile_name" class="pp-label">Name</label>
+                        <input type="text" name="name" id="profile_name"
+                            class="pp-input @error('name') is-invalid @enderror"
+                            value="{{ old('name', auth()->user()->name) }}" required autocomplete="name">
                         @error('name')
-                            <div class="invalid-feedback text-xs">{{ $message }}</div>
+                            <p class="pp-field-error">{{ $message }}</p>
                         @enderror
                     </div>
 
-                    <div class="mb-3">
-                        <label for="profile_email" class="form-label small fw-bold text-muted text-uppercase mb-1">Email Address</label>
-                        <input type="email" name="email" id="profile_email" class="form-control @error('email') is-invalid @enderror" value="{{ old('email', auth()->user()->email) }}" required autocomplete="username">
+                    <div>
+                        <label for="profile_email" class="pp-label">Email Address</label>
+                        <input type="email" name="email" id="profile_email"
+                            class="pp-input @error('email') is-invalid @enderror"
+                            value="{{ old('email', auth()->user()->email) }}" required autocomplete="username">
                         @error('email')
-                            <div class="invalid-feedback text-xs">{{ $message }}</div>
+                            <p class="pp-field-error">{{ $message }}</p>
                         @enderror
                     </div>
 
-                    <button type="submit" class="btn btn-primary fw-bold">Save Changes</button>
+                    @if (session('status') === 'profile-updated')
+                        <div class="pp-alert-success">Profile saved.</div>
+                    @endif
+
+                    <div class="pt-1">
+                        <button type="submit" class="pp-btn-primary">
+                            <span class="material-symbols-outlined text-[18px]">save</span>
+                            Save Changes
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
 
-        <!-- Card 2: Password Update -->
-        <div class="col-12">
-            <div class="card border-0 shadow-sm p-4">
-                <h4 class="h5 fw-bold text-dark mb-1">Update Password</h4>
-                <p class="text-muted small mb-4">Ensure your account is using a long, random password to stay secure.</p>
+        {{-- Appearance --}}
+        <div class="pp-card p-6 lg:col-span-3 xl:col-span-3">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <div class="w-9 h-9 rounded-lg bg-[#004ac6]/10 text-[#004ac6] flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-[20px]">palette</span>
+                        </div>
+                        <h2 class="font-display text-base font-semibold text-[#131b2e]">Appearance</h2>
+                    </div>
+                    <p class="text-sm text-[#737686]">Choose light, dark, or match your device setting. Applies across all pages after login.</p>
+                </div>
 
-                <form method="POST" action="{{ route('password.update') }}" class="space-y-3">
+                <div>
+                    @php $currentTheme = auth()->user()->themePreference(); @endphp
+                    <div class="pp-theme-picker" role="radiogroup" aria-label="Theme preference">
+                        <button type="button"
+                                class="pp-theme-option {{ $currentTheme === 'light' ? 'is-active' : '' }}"
+                                data-theme-option="light"
+                                onclick="window.ppSetTheme('light')"
+                                aria-pressed="{{ $currentTheme === 'light' ? 'true' : 'false' }}">
+                            <span class="material-symbols-outlined">light_mode</span>
+                            <span>Light</span>
+                        </button>
+                        <button type="button"
+                                class="pp-theme-option {{ $currentTheme === 'dark' ? 'is-active' : '' }}"
+                                data-theme-option="dark"
+                                onclick="window.ppSetTheme('dark')"
+                                aria-pressed="{{ $currentTheme === 'dark' ? 'true' : 'false' }}">
+                            <span class="material-symbols-outlined">dark_mode</span>
+                            <span>Dark</span>
+                        </button>
+                        <button type="button"
+                                class="pp-theme-option {{ $currentTheme === 'system' ? 'is-active' : '' }}"
+                                data-theme-option="system"
+                                onclick="window.ppSetTheme('system')"
+                                aria-pressed="{{ $currentTheme === 'system' ? 'true' : 'false' }}">
+                            <span class="material-symbols-outlined">contrast</span>
+                            <span>System</span>
+                        </button>
+                    </div>
+                    @if (session('status') === 'theme-updated')
+                        <div class="pp-alert-success mt-4">Theme preference saved.</div>
+                    @endif
+                </div>
+            </div>
+        </div>
+
+        {{-- Password --}}
+        <div class="pp-card p-6 lg:col-span-3 xl:col-span-3">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <div class="w-9 h-9 rounded-lg bg-[#4648d4]/10 text-[#4648d4] flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-[20px]">lock</span>
+                        </div>
+                        <h2 class="font-display text-base font-semibold text-[#131b2e]">Update Password</h2>
+                    </div>
+                    <p class="text-sm text-[#737686]">Use a long, random password to keep your account secure.</p>
+                </div>
+
+                <form method="POST" action="{{ route('password.update') }}" class="space-y-4">
                     @csrf
                     @method('put')
 
-                    <div class="mb-3">
-                        <label for="update_password_current_password" class="form-label small fw-bold text-muted text-uppercase mb-1">Current Password</label>
-                        <input type="password" name="current_password" id="update_password_current_password" class="form-control @error('current_password', 'updatePassword') is-invalid @enderror" autocomplete="current-password">
+                    <div>
+                        <label for="update_password_current_password" class="pp-label">Current Password</label>
+                        <input type="password" name="current_password" id="update_password_current_password"
+                            class="pp-input @error('current_password', 'updatePassword') is-invalid @enderror"
+                            autocomplete="current-password">
                         @error('current_password', 'updatePassword')
-                            <div class="invalid-feedback text-xs">{{ $message }}</div>
+                            <p class="pp-field-error">{{ $message }}</p>
                         @enderror
                     </div>
 
-                    <div class="mb-3">
-                        <label for="update_password_password" class="form-label small fw-bold text-muted text-uppercase mb-1">New Password</label>
-                        <input type="password" name="password" id="update_password_password" class="form-control @error('password', 'updatePassword') is-invalid @enderror" autocomplete="new-password">
+                    <div>
+                        <label for="update_password_password" class="pp-label">New Password</label>
+                        <input type="password" name="password" id="update_password_password"
+                            class="pp-input @error('password', 'updatePassword') is-invalid @enderror"
+                            autocomplete="new-password">
                         @error('password', 'updatePassword')
-                            <div class="invalid-feedback text-xs">{{ $message }}</div>
+                            <p class="pp-field-error">{{ $message }}</p>
                         @enderror
                     </div>
 
-                    <div class="mb-3">
-                        <label for="update_password_password_confirmation" class="form-label small fw-bold text-muted text-uppercase mb-1">Confirm Password</label>
-                        <input type="password" name="password_confirmation" id="update_password_password_confirmation" class="form-control" autocomplete="new-password">
+                    <div>
+                        <label for="update_password_password_confirmation" class="pp-label">Confirm Password</label>
+                        <input type="password" name="password_confirmation" id="update_password_password_confirmation"
+                            class="pp-input" autocomplete="new-password">
                     </div>
 
-                    <button type="submit" class="btn btn-primary fw-bold">Update Password</button>
+                    @if (session('status') === 'password-updated')
+                        <div class="pp-alert-success">Password saved.</div>
+                    @endif
+
+                    <div class="pt-1">
+                        <button type="submit" class="pp-btn-primary">
+                            <span class="material-symbols-outlined text-[18px]">key</span>
+                            Update Password
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
 
-        <!-- Card 3: Danger Zone / Delete -->
-        <div class="col-12">
-            <div class="card border border-danger-subtle shadow-sm p-4 bg-danger-subtle bg-opacity-10">
-                <h4 class="h5 fw-bold text-danger mb-1">Delete Account</h4>
-                <p class="text-muted small mb-4">Once your account is deleted, all of its resources and post history data will be permanently deleted.</p>
+        {{-- Danger zone --}}
+        <div class="pp-card p-6 lg:col-span-3 xl:col-span-3 border-[#ba1a1a]/30 bg-[#ba1a1a]/[0.02]">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <div class="flex items-center gap-3 mb-1">
+                        <div class="w-9 h-9 rounded-lg bg-[#ba1a1a]/10 text-[#ba1a1a] flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-[20px]">warning</span>
+                        </div>
+                        <h2 class="font-display text-base font-semibold text-[#ba1a1a]">Delete Account</h2>
+                    </div>
+                    <p class="text-sm text-[#737686]">Once deleted, all of your posts and history are permanently removed. This cannot be undone.</p>
+                </div>
 
-                <form method="POST" action="{{ route('profile.destroy') }}" class="space-y-3"
+                <form method="POST" action="{{ route('profile.destroy') }}" class="space-y-4"
                     data-pp-confirm="Your account and all associated data will be permanently deleted. This cannot be undone."
                     data-pp-confirm-title="Delete your account?"
                     data-pp-confirm-variant="danger"
@@ -86,15 +185,22 @@
                     @csrf
                     @method('delete')
 
-                    <div class="mb-3">
-                        <label for="delete_account_password" class="form-label small fw-bold text-muted text-uppercase mb-1">Verify Password</label>
-                        <input type="password" name="password" id="delete_account_password" placeholder="Confirm password to delete..." class="form-control @error('password', 'userDeletion') is-invalid @enderror" required>
+                    <div>
+                        <label for="delete_account_password" class="pp-label">Verify Password</label>
+                        <input type="password" name="password" id="delete_account_password"
+                            placeholder="Confirm password to delete…"
+                            class="pp-input @error('password', 'userDeletion') is-invalid @enderror" required>
                         @error('password', 'userDeletion')
-                            <div class="invalid-feedback text-xs">{{ $message }}</div>
+                            <p class="pp-field-error">{{ $message }}</p>
                         @enderror
                     </div>
 
-                    <button type="submit" class="btn btn-danger fw-bold">Delete Account</button>
+                    <div class="pt-1">
+                        <button type="submit" class="pp-btn-primary pp-btn-danger">
+                            <span class="material-symbols-outlined text-[18px]">delete_forever</span>
+                            Delete Account
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>

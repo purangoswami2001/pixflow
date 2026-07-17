@@ -7,7 +7,14 @@
     <x-pp-page-header
         :title="$editing ? 'Edit Post' : 'Create Post'"
         :description="$editing ? 'Update your creative and resubmit for admin approval.' : 'Pick channel and media, then complete details for approval.'"
-    />
+    >
+        <x-slot name="actions">
+            <a href="{{ route('posts.index') }}" class="pp-btn-secondary">
+                <span class="material-symbols-outlined text-[18px]">arrow_back</span>
+                <span class="pp-action-label">Back to Posts</span>
+            </a>
+        </x-slot>
+    </x-pp-page-header>
 
     @if(!auth()->user()->isAdmin())
         <div class="mb-6 p-4 bg-[#f2f3ff] border border-[#c3c6d7] rounded-xl flex gap-3 text-sm text-[#434655]">
@@ -25,17 +32,15 @@
         <input type="hidden" name="media_type" id="postMediaType">
         <input type="hidden" name="preset_key" id="postPresetKey">
         <input type="hidden" name="selectedMediaId" id="selectedMediaId">
+        <input type="hidden" name="creation_source" id="creationSource" value="manual">
+        <input type="hidden" id="semiDraftId" value="{{ ($editing && (($post->metadata['source'] ?? null) === 'semi-ai')) ? $post->id : '' }}">
 
         <div class="wizard-card">
             <div class="px-6 pt-6">
                 <div class="h-1.5 bg-[#f2f3ff] rounded-full overflow-hidden">
                     <div class="h-full bg-[#004ac6] rounded-full transition-all duration-300" id="progressBar" style="width:16%"></div>
             </div>
-                <div class="flex justify-between mt-4 flex-wrap gap-2 text-xs" id="stepLabels">
-                    @foreach(['Channel','Type','Size','Media','Details','Review'] as $i => $label)
-                        <span class="step-label {{ $i === 0 ? 'active font-bold text-[#004ac6]' : 'text-[#737686]' }}" data-step="{{ $i + 1 }}">{{ $label }}</span>
-                    @endforeach
-                </div>
+                <div class="flex justify-between mt-4 flex-wrap gap-2 text-xs" id="stepLabels"></div>
             </div>
 
             <div class="p-6 lg:p-8">
@@ -80,11 +85,28 @@
                 </div>
 
                 <div class="wizard-step hidden" id="step-4">
+                    <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">How do you want to add media?</h4>
+                    <p class="text-sm text-[#737686] mb-6">Pick from your library, or use Semi-AI Assist to build prompts for ChatGPT, Gemini, Claude, or local models — no API keys required.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <button type="button" class="select-card source-select text-left" data-source="manual" onclick="selectMediaSource('manual')">
+                            <span class="material-symbols-outlined text-3xl text-[#004ac6] mb-2 block">photo_library</span>
+                            <span class="font-semibold text-[#131b2e] block">Choose existing media</span>
+                            <span class="text-xs text-[#737686]">Select an image or video from your library.</span>
+                        </button>
+                        <button type="button" class="select-card source-select text-left" id="semiSourceBtn" data-source="semi" onclick="selectMediaSource('semi')">
+                            <span class="material-symbols-outlined text-3xl text-[#004ac6] mb-2 block">auto_awesome</span>
+                            <span class="font-semibold text-[#131b2e] block">Semi-AI Assist</span>
+                            <span class="text-xs text-[#737686]" id="semiSourceHint">Copy prompts → paste JSON → upload AI image.</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="wizard-step hidden" id="step-5">
                     <div class="flex justify-between items-start flex-wrap gap-3 mb-6">
                         <div>
                             <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">Choose media</h4>
                             <p class="text-sm text-[#737686]">Showing assets matching your configuration.</p>
-            </div>
+                        </div>
                         <a href="{{ route('media.index') }}" target="_blank" class="pp-btn-secondary text-sm py-2">
                             <span class="material-symbols-outlined text-[16px]">add</span> Upload new media
                         </a>
@@ -100,7 +122,165 @@
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" id="mediaGrid"></div>
                 </div>
 
-                <div class="wizard-step hidden" id="step-5">
+                <div class="wizard-step hidden" id="step-6">
+                    <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">Category & topic</h4>
+                    <p class="text-sm text-[#737686] mb-6">Choose or describe your niche, then enter the topic headline for this post.</p>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Category</label>
+                            <select id="semiCategoryId" class="pp-input" onchange="onSemiCategoryChange()">
+                                <option value="">— Custom niche —</option>
+                                @foreach(($contentCategories ?? []) as $cat)
+                                    <option value="{{ $cat->id }}"
+                                        data-niche="{{ e($cat->niche_prompt ?: $cat->name) }}"
+                                        data-audience="{{ e($cat->audience ?? '') }}">{{ $cat->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Post type</label>
+                            <select id="semiTopicType" class="pp-input">
+                                <option value="educational">Educational</option>
+                                <option value="listicle">Listicle</option>
+                                <option value="tip">Tip</option>
+                                <option value="promotional">Promotional</option>
+                            </select>
+                        </div>
+                        <div id="semiCustomNicheWrap">
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Niche / category</label>
+                            <input type="text" id="semiCustomNiche" class="pp-input" placeholder="e.g. natural skincare for sensitive skin">
+                        </div>
+                        <div id="semiCustomAudienceWrap">
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Audience</label>
+                            <input type="text" id="semiCustomAudience" class="pp-input" placeholder="e.g. women 25–45 interested in clean beauty">
+                        </div>
+                        <div class="lg:col-span-2">
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Topic headline</label>
+                            <input type="text" id="semiTopic" class="pp-input" placeholder="e.g. 5 morning habits for clearer skin">
+                        </div>
+                        <div class="lg:col-span-2" id="semiLinkWrap">
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Promo link (optional)</label>
+                            <input type="url" id="semiLinkUrl" class="pp-input" placeholder="https://...">
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Image style</label>
+                            <select id="semiImageStyle" class="pp-input">
+                                @foreach(($imageStyles ?? []) as $style)
+                                    <option value="{{ $style['key'] }}">{{ $style['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="wizard-step hidden" id="step-7">
+                    <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">Idea planner</h4>
+                    <p class="text-sm text-[#737686] mb-4">Copy this prompt into any AI chat model, then paste the JSON response below.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-xs font-semibold text-[#737686] uppercase">Prompt to copy</label>
+                                <button type="button" class="pp-btn-secondary text-xs py-1 px-2.5" onclick="copySemiPrompt('semiIdeaPrompt')">Copy prompt</button>
+                            </div>
+                            <textarea id="semiIdeaPrompt" rows="10" class="pp-input font-mono text-[11px] leading-relaxed" readonly></textarea>
+                            <p class="text-[11px] text-[#737686] mt-1" id="semiIdeaSchemaHint"></p>
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Paste idea JSON</label>
+                            <textarea id="semiIdeaJson" rows="8" class="pp-input font-mono text-[11px] leading-relaxed" placeholder='{"pin_title":"...","angle":"...","key_points":["..."]}'></textarea>
+                            <p class="text-xs text-red-600 mt-1 hidden" id="semiIdeaError"></p>
+                        </div>
+                        <button type="button" class="pp-btn-primary text-sm" id="semiValidateIdeaBtn" onclick="validateSemiIdea()">
+                            Validate &amp; continue
+                        </button>
+                    </div>
+                </div>
+
+                <div class="wizard-step hidden" id="step-8">
+                    <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">Caption &amp; title</h4>
+                    <p class="text-sm text-[#737686] mb-4">Copy this caption prompt, generate JSON externally, then paste it here.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-xs font-semibold text-[#737686] uppercase">Prompt to copy</label>
+                                <button type="button" class="pp-btn-secondary text-xs py-1 px-2.5" onclick="copySemiPrompt('semiCopyPrompt')">Copy prompt</button>
+                            </div>
+                            <textarea id="semiCopyPrompt" rows="10" class="pp-input font-mono text-[11px] leading-relaxed" readonly></textarea>
+                            <p class="text-[11px] text-[#737686] mt-1" id="semiCopySchemaHint"></p>
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Paste caption JSON</label>
+                            <textarea id="semiCopyJson" rows="8" class="pp-input font-mono text-[11px] leading-relaxed" placeholder='{"title":"...","caption":"...","hashtags":["#.."]}'></textarea>
+                            <p class="text-xs text-red-600 mt-1 hidden" id="semiCopyError"></p>
+                        </div>
+                        <button type="button" class="pp-btn-primary text-sm" id="semiValidateCopyBtn" onclick="validateSemiCopy()">
+                            Validate &amp; continue
+                        </button>
+                    </div>
+                </div>
+
+                <div class="wizard-step hidden" id="step-9">
+                    <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">Image prompt &amp; upload</h4>
+                    <p class="text-sm text-[#737686] mb-4">Generate a design prompt JSON externally, then use the design prompt in an image model and upload the result.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-xs font-semibold text-[#737686] uppercase">Prompt for design_prompt JSON</label>
+                                <button type="button" class="pp-btn-secondary text-xs py-1 px-2.5" onclick="copySemiPrompt('semiImagePrompt')">Copy prompt</button>
+                            </div>
+                            <textarea id="semiImagePrompt" rows="8" class="pp-input font-mono text-[11px] leading-relaxed" readonly></textarea>
+                            <p class="text-[11px] text-[#737686] mt-1" id="semiImageSchemaHint"></p>
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Paste image JSON</label>
+                            <textarea id="semiImageJson" rows="5" class="pp-input font-mono text-[11px] leading-relaxed" placeholder='{"design_prompt":"..."}'></textarea>
+                            <p class="text-xs text-red-600 mt-1 hidden" id="semiImageError"></p>
+                            <button type="button" class="pp-btn-secondary text-sm mt-2" id="semiValidateImageBtn" onclick="validateSemiImage()">
+                                Extract design prompt
+                            </button>
+                        </div>
+                        <div id="semiDesignPromptWrap" class="hidden">
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-xs font-semibold text-[#737686] uppercase">Design prompt (for image generators)</label>
+                                <button type="button" class="pp-btn-secondary text-xs py-1 px-2.5" onclick="copySemiPrompt('semiDesignPrompt')">Copy</button>
+                            </div>
+                            <textarea id="semiDesignPrompt" rows="6" class="pp-input font-mono text-[11px] leading-relaxed" readonly></textarea>
+                            <p class="text-[11px] text-[#737686] mt-1">Paste into Midjourney, DALL·E, Flux, SD, etc., then upload the finished image below.</p>
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-[#737686] uppercase block mb-1">Upload generated image</label>
+                            <input type="file" id="semiImageFile" class="hidden" accept="image/jpeg,image/png,image/jpg,image/webp">
+                            <div class="upload-dropzone relative" id="semiImageDropzone">
+                                <div id="semiDropzoneEmpty">
+                                    <span class="material-symbols-outlined text-5xl text-[#004ac6] mb-3 block">cloud_upload</span>
+                                    <p class="font-semibold text-[#131b2e] mb-1">Drop image here or click to browse</p>
+                                    <p class="text-xs text-[#737686]">JPEG, PNG, WebP — max {{ \App\Support\MediaUpload::maxMbLabel() }}</p>
+                                </div>
+                                <div id="semiDropzonePreview" class="hidden text-left">
+                                    <div class="flex items-center justify-between gap-2 mb-3">
+                                        <p class="text-sm font-semibold text-[#131b2e]" id="semiDropzoneFileName">Image selected</p>
+                                        <button type="button" id="semiClearImage" class="text-xs font-semibold text-[#93000a] hover:underline">Remove</button>
+                                    </div>
+                                    <div class="aspect-square max-w-xs mx-auto rounded-xl overflow-hidden bg-[#131b2e] border border-[#c3c6d7] flex items-center justify-center">
+                                        <img id="semiUploadPreviewImg" src="" alt="" class="max-w-full max-h-full object-contain">
+                                    </div>
+                                    <p class="text-xs text-[#434655] mt-2 text-center" id="semiUploadPreviewName"></p>
+                                    <button type="button" id="semiChangeImage" class="mt-3 text-xs font-semibold text-[#004ac6] hover:underline flex items-center gap-1 mx-auto">
+                                        <span class="material-symbols-outlined text-[16px]">swap_horiz</span> Replace image
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-[11px] text-[#737686] mt-2">Image EXIF/XMP is rewritten to Canva-style metadata (same as automation). Alt text notes uploader: {{ auth()->user()->name }}.</p>
+                            <p class="text-xs text-red-600 mt-1 hidden" id="semiUploadError"></p>
+                            <div id="semiUploadPreview" class="hidden" aria-hidden="true"></div>
+                            <button type="button" class="pp-btn-primary text-sm mt-3" id="semiUploadBtn" onclick="uploadSemiImage()">
+                                Upload &amp; continue
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="wizard-step hidden" id="step-10">
                     <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">Post details</h4>
                     <p class="text-sm text-[#737686] mb-6">Select account, then complete channel-specific options.</p>
                     <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -176,13 +356,13 @@
                             <div class="pp-card p-5 h-full">
                                 <h4 class="font-semibold text-[#131b2e] mb-4">Selected media</h4>
                                 <div class="aspect-square rounded-xl overflow-hidden bg-[#f2f3ff] mb-4" id="selectedMediaPreview"></div>
-                                <button type="button" class="pp-btn-secondary w-full text-sm" onclick="goToStep(4)">Change media</button>
+                                <button type="button" class="pp-btn-secondary w-full text-sm" onclick="changeMediaFromDetails()">Change media</button>
                             </div>
                     </div>
                 </div>
             </div>
 
-                <div class="wizard-step hidden" id="step-6">
+                <div class="wizard-step hidden" id="step-11">
                     <h4 class="font-display text-xl font-semibold text-[#131b2e] mb-1">Review & submit</h4>
                     <p class="text-sm text-[#737686] mb-6">Confirm everything looks correct before sending for approval.</p>
 
@@ -271,17 +451,71 @@
         const accounts = @json($accountsJson);
         const editPayload = @json($editPayload);
         const platformFields = @json($platformFields);
+        const semiRoutes = {
+            saveDraft: @json(route('posts.semi-ai.draft-progress')),
+            ideaPrompt: @json(route('posts.semi-ai.idea-prompt')),
+            validateIdea: @json(route('posts.semi-ai.validate-idea')),
+            validateCopy: @json(route('posts.semi-ai.validate-copy')),
+            validateImage: @json(route('posts.semi-ai.validate-image')),
+            uploadImage: @json(route('posts.semi-ai.upload-image')),
+        };
+        const csrfToken = @json(csrf_token());
+        const MAX_UPLOAD_BYTES = @json(\App\Support\MediaUpload::maxKb() * 1024);
+        const MAX_UPLOAD_LABEL = @json(\App\Support\MediaUpload::maxMbLabel());
+        const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
 
         const isEditingPost = @json($editing);
 
+        const STEP_LABELS = {
+            1: 'Channel',
+            2: 'Type',
+            3: 'Size',
+            4: 'Assist',
+            5: 'Media',
+            6: 'Topic',
+            7: 'Idea',
+            8: 'Caption',
+            9: 'Image',
+            10: 'Details',
+            11: 'Review',
+        };
+
         let currentStep = 1;
-        const totalSteps = 6;
+        let mediaMode = null; // 'manual' | 'semi'
         let selectedChannel = null;
         let selectedMediaType = null;
         let selectedPreset = null;
         let availablePresets = [];
         let skipSizeStep = false;
         let selectedMedia = null;
+        let semiIdea = null;
+        let semiCopy = null;
+        let semiDesignPrompt = null;
+        let semiIdeaJsonRaw = '';
+        let semiCopyJsonRaw = '';
+
+        function activeSteps() {
+            if (!mediaMode) {
+                return skipSizeStep ? [1, 2, 4] : [1, 2, 3, 4];
+            }
+            if (mediaMode === 'semi') {
+                return skipSizeStep
+                    ? [1, 2, 4, 6, 7, 8, 9, 10, 11]
+                    : [1, 2, 3, 4, 6, 7, 8, 9, 10, 11];
+            }
+            return skipSizeStep
+                ? [1, 2, 4, 5, 10, 11]
+                : [1, 2, 3, 4, 5, 10, 11];
+        }
+
+        function renderStepLabels() {
+            const steps = activeSteps();
+            const wrap = document.getElementById('stepLabels');
+            wrap.innerHTML = steps.map(s => {
+                const active = s === currentStep;
+                return `<span class="step-label ${active ? 'active font-bold text-[#004ac6]' : 'text-[#737686]'}" data-step="${s}">${STEP_LABELS[s] || s}</span>`;
+            }).join('');
+        }
 
         function channelName(key) {
             return channels.find(c => c.key === key)?.name || key;
@@ -292,32 +526,144 @@
             return res.json();
         }
 
-        function goToStep(step) {
-            if (step < 1 || step > totalSteps) return;
+        async function postJson(url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            return { res, data };
+        }
 
-            document.querySelectorAll('.wizard-step').forEach(el => el.classList.add('hidden'));
-            document.getElementById('step-' + step).classList.remove('hidden');
+        function collectSemiDraftState() {
+            return {
+                channel: selectedChannel,
+                media_type: selectedMediaType,
+                preset_key: selectedPreset || null,
+                category_id: document.getElementById('semiCategoryId').value
+                    ? parseInt(document.getElementById('semiCategoryId').value, 10)
+                    : null,
+                custom_niche: document.getElementById('semiCustomNiche').value.trim() || null,
+                custom_audience: document.getElementById('semiCustomAudience').value.trim() || null,
+                topic: document.getElementById('semiTopic').value.trim(),
+                topic_type: document.getElementById('semiTopicType').value,
+                link_url: document.getElementById('semiLinkUrl').value.trim() || null,
+                image_style: document.getElementById('semiImageStyle').value || null,
+                idea_prompt: document.getElementById('semiIdeaPrompt').value || null,
+                idea_json: document.getElementById('semiIdeaJson').value || null,
+                copy_prompt: document.getElementById('semiCopyPrompt').value || null,
+                copy_json: document.getElementById('semiCopyJson').value || null,
+                image_prompt: document.getElementById('semiImagePrompt').value || null,
+                image_json: document.getElementById('semiImageJson').value || null,
+                design_prompt: document.getElementById('semiDesignPrompt').value || null,
+                selected_media_id: selectedMedia?.id || null,
+                title: document.getElementById('postTitle').value.trim() || null,
+                caption: document.getElementById('postCaption').value.trim() || null,
+                hashtags: document.getElementById('postHashtags').value.trim() || null,
+                account_id: document.getElementById('postAccount').value
+                    ? parseInt(document.getElementById('postAccount').value, 10)
+                    : null,
+                destination_id: document.getElementById('postDestination').value
+                    ? parseInt(document.getElementById('postDestination').value, 10)
+                    : null,
+                platform_fields: capturePlatformFieldValues(),
+            };
+        }
 
-            document.querySelectorAll('.step-label').forEach(el => {
-                const s = parseInt(el.dataset.step, 10);
-                el.classList.toggle('active', s === step);
-                el.classList.toggle('text-[#737686]', s !== step);
-                el.classList.toggle('text-[#004ac6]', s === step);
-                el.classList.toggle('font-bold', s === step);
+        function promoteFormToDraftEdit(data) {
+            const form = document.getElementById('postForm');
+            document.getElementById('semiDraftId').value = data.draft_id;
+            form.action = data.update_url;
+
+            let method = form.querySelector('input[name="_method"]');
+            if (!method) {
+                method = document.createElement('input');
+                method.type = 'hidden';
+                method.name = '_method';
+                form.appendChild(method);
+            }
+            method.value = 'PUT';
+
+            if (data.edit_url && window.location.href !== data.edit_url) {
+                window.history.replaceState({ semiDraftId: data.draft_id }, '', data.edit_url);
+            }
+        }
+
+        async function saveSemiDraftProgress(resumeStep, { quiet = false } = {}) {
+            if (mediaMode !== 'semi') return null;
+
+            const draftId = document.getElementById('semiDraftId').value || null;
+            const { res, data } = await postJson(semiRoutes.saveDraft, {
+                draft_id: draftId ? parseInt(draftId, 10) : null,
+                resume_step: resumeStep,
+                state: collectSemiDraftState(),
             });
 
-            document.getElementById('progressBar').style.width = ((step / totalSteps) * 100) + '%';
+            if (!res.ok) {
+                const message = validationMessage(data, 'Could not save your semi-AI draft.');
+                if (!quiet) ppToast(message, 'error', 'Draft not saved');
+                throw new Error(message);
+            }
+
+            promoteFormToDraftEdit(data);
+            if (!quiet) ppToast('Progress saved as draft.', 'success', 'Saved');
+            return data;
+        }
+
+        function goToStep(step) {
+            const steps = activeSteps();
+            if (!steps.includes(step) && step !== currentStep) {
+                // Allow landing before mode is chosen
+                if (!([1, 2, 3, 4].includes(step))) return;
+            }
+
+            const el = document.getElementById('step-' + step);
+            if (!el) return;
+
+            document.querySelectorAll('.wizard-step').forEach(node => node.classList.add('hidden'));
+            el.classList.remove('hidden');
+
             currentStep = step;
+            renderStepLabels();
 
+            const order = activeSteps();
+            const idx = Math.max(0, order.indexOf(step));
+            const pct = ((idx + 1) / order.length) * 100;
+            document.getElementById('progressBar').style.width = pct + '%';
+
+            const last = order[order.length - 1];
             document.getElementById('prevBtn').classList.toggle('invisible', step === 1);
-            document.getElementById('nextBtn').classList.toggle('hidden', step === totalSteps);
-            document.getElementById('submitBtn').classList.toggle('hidden', step !== totalSteps);
+            document.getElementById('nextBtn').classList.toggle('hidden', step === last || [7, 8, 9].includes(step));
+            document.getElementById('submitBtn').classList.toggle('hidden', step !== last);
 
-            if (step === 5) {
+            if (step === 10) {
                 updatePlatformLabels();
                 renderPlatformFields();
+                if (window.__semiLinkUrl) {
+                    const linkInput = document.querySelector('[name="platformFields[link_url]"]');
+                    if (linkInput && !linkInput.value) linkInput.value = window.__semiLinkUrl;
+                }
             }
-            if (step === 6) updateReview();
+            if (step === 11) updateReview();
+            if (step === 4) syncSemiSourceAvailability();
+
+            if (
+                mediaMode === 'semi'
+                && document.getElementById('semiDraftId').value
+                && step >= 7
+            ) {
+                saveSemiDraftProgress(step, { quiet: true }).catch(() => {});
+            }
+        }
+
+        function stepIndex(step) {
+            return activeSteps().indexOf(step);
         }
 
         function navigateStep(dir) {
@@ -326,22 +672,32 @@
 
                 if (currentStep === 2 && skipSizeStep) {
                     goToStep(4);
-                    loadFilteredMedia();
                     return;
                 }
                 if (currentStep === 3) {
                     goToStep(4);
-                    loadFilteredMedia();
+                    return;
+                }
+                if (currentStep === 6) {
+                    startSemiIdeaPrompt();
                     return;
                 }
             }
 
             if (dir === -1) {
                 if (currentStep === 4 && skipSizeStep) { goToStep(2); return; }
-                if (currentStep === 5) { goToStep(4); return; }
+                if (currentStep === 5 || currentStep === 6) { goToStep(4); return; }
+                if (currentStep === 10) {
+                    goToStep(mediaMode === 'semi' ? 9 : 5);
+                    return;
+                }
             }
 
-            goToStep(currentStep + dir);
+            const order = activeSteps();
+            const idx = stepIndex(currentStep);
+            if (idx < 0) return;
+            const next = order[idx + dir];
+            if (next) goToStep(next);
         }
 
         function ppToast(message, type = 'warning', title = null) {
@@ -352,8 +708,19 @@
             if (step === 1 && !selectedChannel) { ppToast('Please select a channel.'); return false; }
             if (step === 2 && !selectedMediaType) { ppToast('Please select a media type.'); return false; }
             if (step === 3 && !skipSizeStep && !selectedPreset) { ppToast('Please select a size format.'); return false; }
-            if (step === 4 && !selectedMedia) { ppToast('Please select a media asset.'); return false; }
-            if (step === 5) {
+            if (step === 4 && !mediaMode) { ppToast('Please choose existing media or Semi-AI Assist.'); return false; }
+            if (step === 5 && !selectedMedia) { ppToast('Please select a media asset.'); return false; }
+            if (step === 6) {
+                const topic = document.getElementById('semiTopic').value.trim();
+                if (topic.length < 3) { ppToast('Enter a topic headline (at least 3 characters).'); return false; }
+                const catId = document.getElementById('semiCategoryId').value;
+                if (!catId) {
+                    const niche = document.getElementById('semiCustomNiche').value.trim();
+                    if (!niche) { ppToast('Select a category or enter a custom niche.'); return false; }
+                }
+            }
+            if (step === 9 && !selectedMedia) { ppToast('Please upload the generated image first.'); return false; }
+            if (step === 10) {
                 if (!document.getElementById('postAccount').value) { ppToast('Please select an account.'); return false; }
                 if (selectedChannel === 'pinterest' && !document.getElementById('postTitle').value.trim()) {
                     ppToast('Please enter a pin title.');
@@ -364,11 +731,444 @@
             return true;
         }
 
+        function changeMediaFromDetails() {
+            goToStep(4);
+        }
+
+        function selectMediaSource(mode) {
+            if (mode === 'semi' && selectedMediaType === 'video') {
+                ppToast('Semi-AI Assist currently supports image posts only. Switch media type to Image, or choose existing media.');
+                return;
+            }
+
+            mediaMode = mode;
+            const creationSource = document.getElementById('creationSource');
+            if (creationSource) {
+                creationSource.value = mode === 'semi' ? 'semi-ai' : 'manual';
+            }
+            document.querySelectorAll('.source-select').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.source === mode);
+            });
+
+            if (mode === 'manual') {
+                goToStep(5);
+                loadFilteredMedia();
+                return;
+            }
+
+            // Reset semi state when entering assist
+            semiIdea = null;
+            semiCopy = null;
+            semiDesignPrompt = null;
+            semiIdeaJsonRaw = '';
+            semiCopyJsonRaw = '';
+            selectedMedia = null;
+            document.getElementById('selectedMediaId').value = '';
+            document.getElementById('semiIdeaJson').value = '';
+            document.getElementById('semiCopyJson').value = '';
+            document.getElementById('semiImageJson').value = '';
+            document.getElementById('semiDesignPromptWrap').classList.add('hidden');
+            document.getElementById('semiUploadPreview').classList.add('hidden');
+            onSemiCategoryChange();
+            goToStep(6);
+        }
+
+        function syncSemiSourceAvailability() {
+            const btn = document.getElementById('semiSourceBtn');
+            const hint = document.getElementById('semiSourceHint');
+            if (!btn) return;
+            const videoOnly = selectedMediaType === 'video';
+            btn.disabled = videoOnly;
+            btn.classList.toggle('opacity-50', videoOnly);
+            if (hint) {
+                hint.textContent = videoOnly
+                    ? 'Available for image posts only.'
+                    : 'Copy prompts → paste JSON → upload AI image.';
+            }
+        }
+
+        function onSemiCategoryChange() {
+            const select = document.getElementById('semiCategoryId');
+            const hasCat = !!select.value;
+            document.getElementById('semiCustomNicheWrap').classList.toggle('hidden', hasCat);
+            document.getElementById('semiCustomAudienceWrap').classList.toggle('hidden', hasCat);
+            if (hasCat) {
+                const opt = select.selectedOptions[0];
+                document.getElementById('semiCustomNiche').value = opt?.dataset.niche || '';
+                document.getElementById('semiCustomAudience').value = opt?.dataset.audience || '';
+            }
+        }
+
+        function semiContextPayload(extra = {}) {
+            return {
+                platform: selectedChannel,
+                topic: document.getElementById('semiTopic').value.trim(),
+                topic_type: document.getElementById('semiTopicType').value,
+                category_id: document.getElementById('semiCategoryId').value
+                    ? parseInt(document.getElementById('semiCategoryId').value, 10)
+                    : null,
+                custom_niche: document.getElementById('semiCustomNiche').value.trim() || null,
+                custom_audience: document.getElementById('semiCustomAudience').value.trim() || null,
+                link_url: document.getElementById('semiLinkUrl').value.trim() || null,
+                preset_key: selectedPreset || null,
+                image_style: document.getElementById('semiImageStyle').value || null,
+                ...extra,
+            };
+        }
+
+        function validationMessage(data, fallback) {
+            if (data.message) return data.message;
+            if (data.errors) {
+                const first = Object.values(data.errors)[0];
+                if (Array.isArray(first) && first[0]) return first[0];
+            }
+            return fallback;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / 1024).toFixed(1) + ' KB';
+        }
+
+        function validateSemiImageFile(file) {
+            if (!file) return 'Choose an image file to upload.';
+            const type = (file.type || '').toLowerCase();
+            const okType = ALLOWED_IMAGE_TYPES.includes(type)
+                || /\.(jpe?g|png|webp)$/i.test(file.name || '');
+            if (!okType) {
+                return 'Only JPEG, PNG, or WebP images are allowed.';
+            }
+            if (file.size > MAX_UPLOAD_BYTES) {
+                return `"${file.name}" is ${formatFileSize(file.size)}. Maximum size is ${MAX_UPLOAD_LABEL}.`;
+            }
+            return null;
+        }
+
+        let semiPreviewObjectUrl = null;
+
+        function clearSemiImageSelection() {
+            const fileInput = document.getElementById('semiImageFile');
+            const empty = document.getElementById('semiDropzoneEmpty');
+            const preview = document.getElementById('semiDropzonePreview');
+            if (semiPreviewObjectUrl) {
+                URL.revokeObjectURL(semiPreviewObjectUrl);
+                semiPreviewObjectUrl = null;
+            }
+            if (fileInput) fileInput.value = '';
+            document.getElementById('semiUploadPreviewImg').src = '';
+            document.getElementById('semiUploadPreviewName').textContent = '';
+            document.getElementById('semiDropzoneFileName').textContent = 'Image selected';
+            empty?.classList.remove('hidden');
+            preview?.classList.add('hidden');
+            document.getElementById('semiUploadError')?.classList.add('hidden');
+        }
+
+        function setSemiImageFile(file) {
+            const err = document.getElementById('semiUploadError');
+            err.classList.add('hidden');
+            const validationError = validateSemiImageFile(file);
+            if (validationError) {
+                err.textContent = validationError;
+                err.classList.remove('hidden');
+                ppToast(validationError, 'error', 'Upload blocked');
+                clearSemiImageSelection();
+                return false;
+            }
+
+            const fileInput = document.getElementById('semiImageFile');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+
+            if (semiPreviewObjectUrl) URL.revokeObjectURL(semiPreviewObjectUrl);
+            semiPreviewObjectUrl = URL.createObjectURL(file);
+
+            document.getElementById('semiUploadPreviewImg').src = semiPreviewObjectUrl;
+            document.getElementById('semiUploadPreviewName').textContent = `${file.name} · ${formatFileSize(file.size)}`;
+            document.getElementById('semiDropzoneFileName').textContent = 'Ready to upload';
+            document.getElementById('semiDropzoneEmpty').classList.add('hidden');
+            document.getElementById('semiDropzonePreview').classList.remove('hidden');
+            return true;
+        }
+
+        (function initSemiImageDropzone() {
+            const dropzone = document.getElementById('semiImageDropzone');
+            const fileInput = document.getElementById('semiImageFile');
+            if (!dropzone || !fileInput) return;
+
+            dropzone.addEventListener('click', (e) => {
+                if (e.target.closest('#semiClearImage') || e.target.closest('#semiChangeImage')) return;
+                fileInput.click();
+            });
+            document.getElementById('semiChangeImage')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fileInput.click();
+            });
+            document.getElementById('semiClearImage')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                clearSemiImageSelection();
+            });
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files?.[0]) setSemiImageFile(fileInput.files[0]);
+            });
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('is-dragover');
+            });
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('is-dragover'));
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('is-dragover');
+                const file = e.dataTransfer.files?.[0];
+                if (file) setSemiImageFile(file);
+            });
+        })();
+
+        async function copySemiPrompt(textareaId) {
+            const el = document.getElementById(textareaId);
+            if (!el?.value) { ppToast('Nothing to copy yet.'); return; }
+            try {
+                await navigator.clipboard.writeText(el.value);
+                ppToast('Copied to clipboard.', 'success', 'Copied');
+            } catch (e) {
+                el.select();
+                document.execCommand('copy');
+                ppToast('Copied to clipboard.', 'success', 'Copied');
+            }
+        }
+
+        async function startSemiIdeaPrompt() {
+            if (!validateStep(6)) return;
+
+            const nextBtn = document.getElementById('nextBtn');
+            const original = nextBtn.innerHTML;
+            nextBtn.disabled = true;
+            nextBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">progress_activity</span> Saving…';
+
+            try {
+                // The first persistent checkpoint: Category & Topic creates the Post draft.
+                await saveSemiDraftProgress(7, { quiet: true });
+
+                const { res, data } = await postJson(semiRoutes.ideaPrompt, semiContextPayload());
+                if (!res.ok) {
+                    ppToast(validationMessage(data, 'Could not build idea prompt. Check Prompt Studio templates.'), 'error');
+                    return;
+                }
+
+                document.getElementById('semiIdeaPrompt').value = data.prompt || '';
+                document.getElementById('semiIdeaSchemaHint').textContent = data.schema_hint
+                    ? 'Expected JSON: ' + data.schema_hint
+                    : '';
+                await saveSemiDraftProgress(7, { quiet: true });
+                ppToast('Draft created and progress saved.', 'success', 'Draft saved');
+                goToStep(7);
+            } catch (e) {
+                // saveSemiDraftProgress already shows a useful error.
+            } finally {
+                nextBtn.disabled = false;
+                nextBtn.innerHTML = original;
+            }
+        }
+
+        async function validateSemiIdea() {
+            const err = document.getElementById('semiIdeaError');
+            err.classList.add('hidden');
+            const btn = document.getElementById('semiValidateIdeaBtn');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Validating...';
+
+            try {
+                const ideaJson = document.getElementById('semiIdeaJson').value;
+                const { res, data } = await postJson(semiRoutes.validateIdea, semiContextPayload({
+                    idea_json: ideaJson,
+                }));
+                if (!res.ok) {
+                    err.textContent = validationMessage(data, 'Invalid idea JSON');
+                    err.classList.remove('hidden');
+                    return;
+                }
+
+                semiIdea = data.idea;
+                semiIdeaJsonRaw = ideaJson;
+                const copyPrompt = data.copy_prompt || {};
+                document.getElementById('semiCopyPrompt').value = copyPrompt.prompt || '';
+                document.getElementById('semiCopySchemaHint').textContent = copyPrompt.schema_hint
+                    ? 'Expected JSON: ' + copyPrompt.schema_hint
+                    : '';
+                goToStep(8);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        async function validateSemiCopy() {
+            const err = document.getElementById('semiCopyError');
+            err.classList.add('hidden');
+            const btn = document.getElementById('semiValidateCopyBtn');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Validating...';
+
+            try {
+                const copyJson = document.getElementById('semiCopyJson').value;
+                const { res, data } = await postJson(semiRoutes.validateCopy, semiContextPayload({
+                    idea_json: semiIdeaJsonRaw || document.getElementById('semiIdeaJson').value,
+                    copy_json: copyJson,
+                }));
+                if (!res.ok) {
+                    err.textContent = validationMessage(data, 'Invalid caption JSON');
+                    err.classList.remove('hidden');
+                    return;
+                }
+
+                semiCopy = data.copy;
+                semiCopyJsonRaw = copyJson;
+                applySemiCopyToForm(semiCopy);
+
+                const imagePrompt = data.image_prompt || {};
+                document.getElementById('semiImagePrompt').value = imagePrompt.prompt || '';
+                document.getElementById('semiImageSchemaHint').textContent = imagePrompt.schema_hint
+                    ? `Expected JSON: ${imagePrompt.schema_hint} · ${imagePrompt.width || ''}×${imagePrompt.height || ''}px`
+                    : '';
+                goToStep(9);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        function applySemiCopyToForm(copy) {
+            if (!copy) return;
+            if (copy.title) document.getElementById('postTitle').value = copy.title;
+            if (copy.caption) document.getElementById('postCaption').value = copy.caption;
+            if (Array.isArray(copy.hashtags)) {
+                document.getElementById('postHashtags').value = copy.hashtags.join(' ');
+            }
+            if (copy.link_url) {
+                // Will be available after platform fields render; stash for later
+                window.__semiLinkUrl = copy.link_url;
+            }
+            populateAccounts();
+            updatePlatformLabels();
+        }
+
+        async function validateSemiImage() {
+            const err = document.getElementById('semiImageError');
+            err.classList.add('hidden');
+            const btn = document.getElementById('semiValidateImageBtn');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Extracting...';
+
+            try {
+                const { res, data } = await postJson(semiRoutes.validateImage, {
+                    image_json: document.getElementById('semiImageJson').value,
+                });
+                if (!res.ok) {
+                    err.textContent = validationMessage(data, 'Invalid image JSON');
+                    err.classList.remove('hidden');
+                    return;
+                }
+
+                semiDesignPrompt = data.design_prompt;
+                document.getElementById('semiDesignPrompt').value = semiDesignPrompt;
+                document.getElementById('semiDesignPromptWrap').classList.remove('hidden');
+                ppToast('Design prompt ready to copy into your image model.', 'success', 'Ready');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
+        async function uploadSemiImage() {
+            const err = document.getElementById('semiUploadError');
+            err.classList.add('hidden');
+            const fileInput = document.getElementById('semiImageFile');
+            const file = fileInput.files?.[0];
+            const clientError = validateSemiImageFile(file);
+            if (clientError) {
+                err.textContent = clientError;
+                err.classList.remove('hidden');
+                ppToast(clientError, 'error', 'Upload blocked');
+                return;
+            }
+
+            const btn = document.getElementById('semiUploadBtn');
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Uploading...';
+
+            try {
+                const form = new FormData();
+                form.append('file', file);
+                form.append('channel', selectedChannel);
+                form.append('media_type', selectedMediaType || 'image');
+                if (selectedPreset) form.append('preset_key', selectedPreset);
+                form.append('topic_type', document.getElementById('semiTopicType').value);
+                form.append('image_style', document.getElementById('semiImageStyle').value || '');
+
+                const res = await fetch(semiRoutes.uploadImage, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: form,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    const msg = validationMessage(data, `Upload failed. Max size is ${MAX_UPLOAD_LABEL}. Use JPEG, PNG, or WebP.`);
+                    err.textContent = msg;
+                    err.classList.remove('hidden');
+                    ppToast(msg, 'error', 'Upload failed');
+                    return;
+                }
+
+                const asset = data.asset;
+                selectedMedia = {
+                    id: asset.id,
+                    url: asset.url,
+                    name: asset.original_name,
+                };
+                document.getElementById('selectedMediaId').value = asset.id;
+                document.getElementById('semiUploadPreviewImg').src = asset.url;
+                document.getElementById('semiUploadPreviewName').textContent = asset.original_name;
+                document.getElementById('semiDropzoneEmpty').classList.add('hidden');
+                document.getElementById('semiDropzonePreview').classList.remove('hidden');
+                document.getElementById('semiDropzoneFileName').textContent = 'Uploaded';
+                document.getElementById('selectedMediaPreview').innerHTML =
+                    `<img src="${asset.url}" class="w-full h-full object-cover cursor-zoom-in" alt=""
+                       data-pp-lightbox="${asset.url}" data-pp-lightbox-caption="${asset.original_name}" title="View full image">`;
+
+                applySemiCopyToForm(semiCopy);
+                if (window.__semiLinkUrl) {
+                    renderPlatformFields();
+                    const linkInput = document.querySelector('[name="platformFields[link_url]"]');
+                    if (linkInput) linkInput.value = window.__semiLinkUrl;
+                }
+
+                ppToast('Image uploaded successfully.', 'success', 'Uploaded');
+                goToStep(10);
+            } catch (e) {
+                const msg = 'Network error while uploading. Check your connection and try again.';
+                err.textContent = msg;
+                err.classList.remove('hidden');
+                ppToast(msg, 'error', 'Upload failed');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+
         async function selectChannel(key) {
             selectedChannel = key;
             selectedMediaType = null;
             selectedPreset = null;
             selectedMedia = null;
+            mediaMode = null;
             document.getElementById('postChannel').value = key;
             document.getElementById('postMediaType').value = '';
             document.getElementById('postPresetKey').value = '';
@@ -411,6 +1211,7 @@
             selectedMediaType = type;
             selectedPreset = null;
             selectedMedia = null;
+            mediaMode = null;
             document.getElementById('postMediaType').value = type;
             document.getElementById('postPresetKey').value = '';
             document.getElementById('selectedMediaId').value = '';
@@ -437,7 +1238,6 @@
                 selectedPreset = '';
                 document.getElementById('postPresetKey').value = '';
                 goToStep(4);
-                loadFilteredMedia();
                 return;
             }
 
@@ -456,10 +1256,10 @@
             container.querySelectorAll('.preset-select').forEach(btn => {
                 btn.addEventListener('click', () => {
                     selectedPreset = btn.dataset.preset;
+                    mediaMode = null;
                     document.getElementById('postPresetKey').value = selectedPreset;
                     document.querySelectorAll('.preset-select').forEach(b => b.classList.toggle('active', b.dataset.preset === selectedPreset));
                     goToStep(4);
-                    loadFilteredMedia();
                 });
             });
         }
@@ -1102,9 +1902,13 @@
                            data-pp-lightbox="${editPayload.media_url}" title="View full image">`;
             }
 
-            document.getElementById('postTitle').value = editPayload.title || '';
-            document.getElementById('postCaption').value = editPayload.caption || '';
-            document.getElementById('postHashtags').value = editPayload.hashtags || '';
+            const wizard = editPayload.wizard || null;
+            const wizardState = wizard?.state || {};
+            const isSemiDraft = editPayload.creation_source === 'semi-ai' && wizard;
+
+            document.getElementById('postTitle').value = editPayload.title || wizardState.title || '';
+            document.getElementById('postCaption').value = editPayload.caption || wizardState.caption || '';
+            document.getElementById('postHashtags').value = editPayload.hashtags || wizardState.hashtags || '';
 
             populateAccounts();
             updatePlatformLabels();
@@ -1116,7 +1920,48 @@
                 document.getElementById('postDestination').value = editPayload.destination_id;
             }
 
-            goToStep(5);
+            if (isSemiDraft) {
+                mediaMode = 'semi';
+                document.getElementById('creationSource').value = 'semi-ai';
+                document.getElementById('semiCategoryId').value = wizardState.category_id || '';
+                onSemiCategoryChange();
+                if (!wizardState.category_id) {
+                    document.getElementById('semiCustomNiche').value = wizardState.custom_niche || '';
+                    document.getElementById('semiCustomAudience').value = wizardState.custom_audience || '';
+                }
+                document.getElementById('semiTopic').value = wizardState.topic || '';
+                document.getElementById('semiTopicType').value = wizardState.topic_type || 'educational';
+                document.getElementById('semiLinkUrl').value = wizardState.link_url || '';
+                document.getElementById('semiImageStyle').value = wizardState.image_style || '';
+                document.getElementById('semiIdeaPrompt').value = wizardState.idea_prompt || '';
+                document.getElementById('semiIdeaJson').value = wizardState.idea_json || '';
+                document.getElementById('semiCopyPrompt').value = wizardState.copy_prompt || '';
+                document.getElementById('semiCopyJson').value = wizardState.copy_json || '';
+                document.getElementById('semiImagePrompt').value = wizardState.image_prompt || '';
+                document.getElementById('semiImageJson').value = wizardState.image_json || '';
+                document.getElementById('semiDesignPrompt').value = wizardState.design_prompt || '';
+                semiIdeaJsonRaw = wizardState.idea_json || '';
+                semiCopyJsonRaw = wizardState.copy_json || '';
+
+                if (wizardState.design_prompt) {
+                    document.getElementById('semiDesignPromptWrap').classList.remove('hidden');
+                }
+                if (selectedMedia?.url) {
+                    document.getElementById('semiUploadPreviewImg').src = selectedMedia.url;
+                    document.getElementById('semiUploadPreviewName').textContent = selectedMedia.name || 'Uploaded image';
+                    document.getElementById('semiDropzoneEmpty').classList.add('hidden');
+                    document.getElementById('semiDropzonePreview').classList.remove('hidden');
+                    document.getElementById('semiDropzoneFileName').textContent = 'Uploaded';
+                }
+            } else {
+                mediaMode = 'manual';
+                document.getElementById('creationSource').value = editPayload.creation_source || 'manual';
+            }
+
+            document.querySelectorAll('.source-select').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.source === mediaMode);
+            });
+            goToStep(isSemiDraft ? (wizard.resume_step || 7) : 10);
         }
 
         document.getElementById('postAccount')?.addEventListener('change', () => {
@@ -1125,6 +1970,57 @@
         });
         document.getElementById('postDestination')?.addEventListener('change', renderPlatformFields);
 
+        let semiAutosaveTimer = null;
+        function scheduleSemiAutosave() {
+            if (mediaMode !== 'semi' || !document.getElementById('semiDraftId').value) return;
+            window.clearTimeout(semiAutosaveTimer);
+            semiAutosaveTimer = window.setTimeout(() => {
+                saveSemiDraftProgress(Math.max(7, currentStep), { quiet: true }).catch(() => {});
+            }, 800);
+        }
+
+        [
+            'semiCategoryId', 'semiTopicType', 'semiCustomNiche', 'semiCustomAudience',
+            'semiTopic', 'semiLinkUrl', 'semiImageStyle', 'semiIdeaJson', 'semiCopyJson',
+            'semiImageJson', 'postTitle', 'postCaption', 'postHashtags',
+            'postAccount', 'postDestination',
+        ].forEach(id => {
+            const input = document.getElementById(id);
+            input?.addEventListener('input', scheduleSemiAutosave);
+            input?.addEventListener('change', scheduleSemiAutosave);
+        });
+        document.getElementById('platformFieldsContainer')?.addEventListener('input', scheduleSemiAutosave);
+        document.getElementById('platformFieldsContainer')?.addEventListener('change', scheduleSemiAutosave);
+
+        document.getElementById('postForm')?.addEventListener('submit', async function (event) {
+            if (
+                mediaMode !== 'semi'
+                || !document.getElementById('semiDraftId').value
+                || this.dataset.semiReady === '1'
+            ) {
+                return;
+            }
+
+            event.preventDefault();
+            const submit = document.getElementById('submitBtn');
+            const original = submit?.innerHTML;
+            if (submit) {
+                submit.disabled = true;
+                submit.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">progress_activity</span> Saving…';
+            }
+
+            try {
+                await saveSemiDraftProgress(11, { quiet: true });
+                this.dataset.semiReady = '1';
+                this.submit();
+            } catch (e) {
+                if (submit) {
+                    submit.disabled = false;
+                    submit.innerHTML = original;
+                }
+            }
+        });
+
         document.getElementById('isDraftSwitch')?.addEventListener('change', function () {
             const label = document.getElementById('submitBtnLabel');
             if (!label) return;
@@ -1132,6 +2028,8 @@
                 ? 'Save draft'
                 : (isEditingPost ? 'Resubmit for Approval' : 'Submit for Approval');
         });
+
+        renderStepLabels();
 
         if (editPayload) {
             initEditMode();

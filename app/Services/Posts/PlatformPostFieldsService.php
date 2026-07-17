@@ -182,12 +182,34 @@ class PlatformPostFieldsService
     public function buildFacebookApiPayload(PostTarget $target, bool $isPhoto): array
     {
         $post = $target->post;
+        $text = $this->buildCaptionWithHashtags($post);
 
         $payload = $isPhoto
-            ? ['caption' => $this->buildCaptionWithHashtags($post)]
-            : ['message' => $this->buildCaptionWithHashtags($post)];
+            ? ['caption' => $text]
+            : ['message' => $text];
 
         $payload['published'] = true;
+
+        return $payload;
+    }
+
+    /**
+     * Facebook Page video posts use /{page-id}/videos with description (not caption).
+     *
+     * @return array<string, mixed>
+     */
+    public function buildFacebookVideoApiPayload(PostTarget $target): array
+    {
+        $post = $target->post;
+        $payload = [
+            'description' => $this->buildCaptionWithHashtags($post),
+            'published' => true,
+        ];
+
+        $title = trim((string) ($post->title ?? ''));
+        if ($title !== '') {
+            $payload['title'] = mb_substr($title, 0, 255);
+        }
 
         return $payload;
     }
@@ -237,14 +259,27 @@ class PlatformPostFieldsService
     {
         $caption = trim($post->caption ?? '');
         $hashtags = collect($post->hashtags ?? [])
+            ->map(fn ($tag) => trim((string) $tag))
+            ->filter()
             ->map(fn ($tag) => str_starts_with($tag, '#') ? $tag : '#' . $tag)
-            ->implode(' ');
+            ->unique(fn ($tag) => mb_strtolower($tag))
+            ->values();
 
-        if ($hashtags === '') {
+        if ($hashtags->isEmpty()) {
             return $caption;
         }
 
-        return trim($caption . "\n\n" . $hashtags);
+        // Skip tags already present in the caption (automation previously embedded them).
+        $captionLower = mb_strtolower($caption);
+        $missing = $hashtags
+            ->reject(fn ($tag) => str_contains($captionLower, mb_strtolower($tag)))
+            ->values();
+
+        if ($missing->isEmpty()) {
+            return $caption;
+        }
+
+        return trim($caption . "\n\n" . $missing->implode(' '));
     }
 
     /**

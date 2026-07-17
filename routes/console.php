@@ -11,5 +11,6 @@ Artisan::command('inspire', function () {
 
 Schedule::command('social:publish-due')->everyMinute();
 Schedule::command('automation:run-due')->everyFiveMinutes();
+Schedule::command('automation:auto-review-pending')->everyFiveMinutes();
 Schedule::command('social:refresh-tokens')->daily();
 Schedule::command('social:cleanup-old-logs')->daily();

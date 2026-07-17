@@ -23,13 +23,14 @@
             <span>Remember me</span>
         </label>
 
-        <div class="flex items-center justify-between gap-3 pt-2">
+        <div class="flex flex-col gap-3 pt-2">
+            <button type="submit" class="pp-btn-primary w-full justify-center py-2.5">
+                Log in
+                <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+            </button>
             @if (Route::has('password.request'))
-                <a class="text-sm text-[#004ac6] hover:underline" href="{{ route('password.request') }}">Forgot password?</a>
-            @else
-                <span></span>
+                <a class="text-sm text-center text-[#004ac6] hover:underline" href="{{ route('password.request') }}">Forgot password?</a>
             @endif
-            <button type="submit" class="pp-btn-primary px-6">Log in</button>
         </div>
     </form>
 </x-guest-layout>

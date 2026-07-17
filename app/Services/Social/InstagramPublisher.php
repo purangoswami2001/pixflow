@@ -73,6 +73,7 @@ class InstagramPublisher implements SocialPublisherInterface
             }
 
             $mediaUrl = $target->resolvedMediaUrl();
+            $isVideo = $target->isVideoMedia();
 
             // Step 1: Create Container
             $containerEndpoint = "{$apiUrl}/{$apiVersion}/{$igAccountId}/media";
@@ -82,10 +83,11 @@ class InstagramPublisher implements SocialPublisherInterface
                 'method' => 'POST',
                 'endpoint' => $containerEndpoint,
                 'body' => $containerPayload,
+                'media_kind' => $isVideo ? 'video' : 'image',
             ];
 
             Log::info('Instagram container API request', $containerRequestLog);
-            $containerResponse = Http::withToken($accessToken)->post($containerEndpoint, $containerPayload);
+            $containerResponse = Http::timeout(90)->withToken($accessToken)->post($containerEndpoint, $containerPayload);
             $containerBody = $containerResponse->json() ?? ['raw' => $containerResponse->body()];
             Log::info('Instagram container API response', [
                 'status' => $containerResponse->status(),
@@ -100,6 +102,10 @@ class InstagramPublisher implements SocialPublisherInterface
                 if ($subcode == 2207023) {
                     $errorMessage = 'Instagram rejected the media container. For feed photos use an image post (not Reel). '
                         . 'Do not send share_to_feed with image_url — that field is for Reels only.';
+                }
+
+                if ($isVideo && str_contains(strtolower($errorMessage), 'url')) {
+                    $errorMessage .= ' Video posts require a publicly reachable HTTPS media URL (not localhost/ngrok-blocked hosts).';
                 }
                 
                 if ($containerResponse->status() === 401 || ($errorData['error']['code'] ?? 0) == 190) {
@@ -137,19 +143,20 @@ class InstagramPublisher implements SocialPublisherInterface
                 ];
             }
 
-            // Step 2: Poll Container Status (up to 5 times with 2-second sleep)
+            // Step 2: Poll Container Status (videos need longer processing)
             $statusEndpoint = "{$apiUrl}/{$apiVersion}/{$containerId}";
             $isReady = false;
             $pollAttempts = 0;
-            $maxPolls = 5;
+            $maxPolls = $isVideo ? 20 : 5;
+            $pollSleep = $isVideo ? 5 : 3;
 
             while (!$isReady && $pollAttempts < $maxPolls) {
                 $pollAttempts++;
-                sleep(3); // sleep to give Instagram time to process
+                sleep($pollSleep);
 
                 Log::debug("Instagram Poll Status Attempt {$pollAttempts}: GET {$statusEndpoint}");
                 $statusResponse = Http::withToken($accessToken)->get($statusEndpoint, [
-                    'fields' => 'status_code'
+                    'fields' => 'status_code,status'
                 ]);
 
                 if ($statusResponse->successful()) {
@@ -174,7 +181,9 @@ class InstagramPublisher implements SocialPublisherInterface
                     'provider_post_id' => null,
                     'provider_post_url' => null,
                     'metadata' => [],
-                    'error' => 'Instagram container processing timed out'
+                    'error' => $isVideo
+                        ? 'Instagram video processing timed out. Try a shorter MP4 (H.264) and ensure the media URL is publicly reachable.'
+                        : 'Instagram container processing timed out'
                 ];
             }
 

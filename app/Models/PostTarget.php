@@ -113,6 +113,15 @@ class PostTarget extends Model
         return $this->platform_media_url;
     }
 
+    public function resolvedMediaAbsolutePath(): ?string
+    {
+        if (! $this->platform_media_path || ! Storage::disk('public')->exists($this->platform_media_path)) {
+            return null;
+        }
+
+        return Storage::disk('public')->path($this->platform_media_path);
+    }
+
     public function resolvedMimeType(): ?string
     {
         if (!empty($this->media_snapshot['mime_type'])) {
@@ -190,9 +199,27 @@ class PostTarget extends Model
 
     public function isVideoMedia(): bool
     {
-        $mime = $this->resolvedMimeType();
+        if (($this->media_snapshot['media_type'] ?? null) === 'video') {
+            return true;
+        }
 
-        return $mime && str_starts_with($mime, 'video/');
+        $mime = $this->resolvedMimeType();
+        if ($mime && str_starts_with($mime, 'video/')) {
+            return true;
+        }
+
+        $path = (string) ($this->platform_media_path ?? '');
+
+        return (bool) preg_match('/\.(mp4|mov|m4v|webm)$/i', $path);
+    }
+
+    /**
+     * Date/time used to place this target on the calendar.
+     * Publish-now posts often have no scheduled_at — fall back to published_at.
+     */
+    public function calendarAt(): ?\Carbon\Carbon
+    {
+        return $this->scheduled_at ?? $this->published_at;
     }
 
     protected static function booted(): void

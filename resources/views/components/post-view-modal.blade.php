@@ -1,4 +1,4 @@
-@props(['posts', 'isAdmin' => false])
+@props(['posts', 'isAdmin' => false, 'viewPost' => null])
 
 @php
     $platformFieldsService = app(\App\Services\Posts\PlatformPostFieldsService::class);
@@ -15,7 +15,17 @@
         'pinterest_pin' => 'Pinterest Pin',
     ];
 
-    $postsJson = $posts->mapWithKeys(function ($post) use ($isAdmin, $platformFieldsService, $channelLabels, $postTypeLabels) {
+    $modalPosts = collect(
+        $posts instanceof \Illuminate\Contracts\Pagination\Paginator
+            ? $posts->items()
+            : $posts
+    );
+
+    if ($viewPost && ! $modalPosts->contains(fn ($p) => (int) $p->id === (int) $viewPost->id)) {
+        $modalPosts = $modalPosts->prepend($viewPost);
+    }
+
+    $postsJson = $modalPosts->mapWithKeys(function ($post) use ($isAdmin, $platformFieldsService, $channelLabels, $postTypeLabels) {
         $target = $post->targets->first();
         $status = $post->status->value;
         $user = auth()->user();
@@ -263,6 +273,23 @@
             rows.push(`<div class="mt-3 p-3 bg-[#f2f3ff] rounded-lg border border-[#c3c6d7] text-xs italic text-[#434655]"><span class="font-semibold not-italic">Admin note:</span> ${escapeHtml(post.admin_note)}</div>`);
         }
 
+        const ar = post.metadata?.auto_review;
+        if (ar && ar.decision) {
+            const score = ar.overall_score != null ? ` · score ${ar.overall_score}` : '';
+            const conf = ar.confidence != null ? ` · confidence ${Math.round(Number(ar.confidence) * 100)}%` : '';
+            const reasons = Array.isArray(ar.reasons) && ar.reasons.length
+                ? `<ul class="mt-1 list-disc pl-4">${ar.reasons.slice(0, 6).map(r => `<li>${escapeHtml(String(r))}</li>`).join('')}</ul>`
+                : '';
+            const checklist = Array.isArray(ar.revision_checklist) && ar.revision_checklist.length
+                ? `<p class="mt-2 font-semibold not-italic">Revision checklist</p><ul class="list-disc pl-4">${ar.revision_checklist.slice(0, 6).map(r => `<li>${escapeHtml(String(r))}</li>`).join('')}</ul>`
+                : '';
+            rows.push(`<div class="mt-3 p-3 rounded-lg border border-[#c3c6d7] bg-white text-xs text-[#434655]">
+                <p class="font-semibold text-[#131b2e]">AutoReview Agent · ${escapeHtml(String(ar.decision))}${score}${conf}</p>
+                <p class="text-[10px] text-[#737686] mt-0.5">${escapeHtml(String(ar.reviewed_by || 'auto-review-agent'))}${ar.reviewed_at ? ' · ' + escapeHtml(String(ar.reviewed_at)) : ''}</p>
+                ${reasons}${checklist}
+            </div>`);
+        }
+
         return `<div class="p-4 space-y-1">${rows.join('')}</div>`;
     }
 
@@ -367,5 +394,11 @@
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') closePostViewModal();
     });
+
+    @if($viewPost)
+    document.addEventListener('DOMContentLoaded', () => {
+        openPostViewModal({{ (int) $viewPost->id }});
+    });
+    @endif
 </script>
 @endpush

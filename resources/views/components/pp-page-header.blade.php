@@ -1,18 +1,18 @@
 @props(['title', 'description' => null, 'breadcrumb' => null])
 
-<div class="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-    <div>
+<div class="pp-page-header pp-reveal is-visible">
+    <div class="pp-page-header-copy min-w-0 flex-1">
         @if($breadcrumb)
-            <nav class="flex gap-2 text-xs font-semibold text-[#737686] tracking-wide uppercase mb-2">
+            <nav class="pp-page-breadcrumb">
                 {!! $breadcrumb !!}
             </nav>
         @endif
-        <h2 class="font-display text-2xl font-semibold text-[#131b2e] tracking-tight">{{ $title }}</h2>
+        <h2 class="pp-page-title">{{ $title }}</h2>
         @if($description)
-            <p class="text-[#434655] text-sm mt-1">{{ $description }}</p>
+            <p class="pp-page-desc">{{ $description }}</p>
         @endif
     </div>
     @if(isset($actions))
-        <div class="flex gap-3 flex-wrap">{{ $actions }}</div>
+        <div class="pp-page-actions">{{ $actions }}</div>
     @endif
 </div>

@@ -46,6 +46,22 @@ return [
 
     'safety_enabled' => env('AUTOMATION_SAFETY_ENABLED', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Auto-review agent (approve / revision / reject automation posts)
+    |--------------------------------------------------------------------------
+    */
+
+    'auto_review' => [
+        'enabled' => env('AUTO_REVIEW_ENABLED', false),
+        'min_approve_score' => (int) env('AUTO_REVIEW_MIN_SCORE', 75),
+        'min_confidence' => (float) env('AUTO_REVIEW_MIN_CONFIDENCE', 0.65),
+        'vision_enabled' => env('AUTO_REVIEW_VISION_ENABLED', true),
+        'allow_rereview' => env('AUTO_REVIEW_ALLOW_REREVIEW', false),
+        'dispatch_after_create' => env('AUTO_REVIEW_DISPATCH_AFTER_CREATE', true),
+        'scan_limit' => (int) env('AUTO_REVIEW_SCAN_LIMIT', 20),
+    ],
+
     'default_presets' => [
         'pinterest' => 'pinterest_pin',
         'facebook' => 'facebook_flexible',

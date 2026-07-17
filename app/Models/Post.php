@@ -58,7 +58,11 @@ class Post extends Model
         }
 
         return $this->user_id === $user->id
-            && in_array($this->status, [PostStatus::DRAFT, PostStatus::NEEDS_REVISION], true);
+            && in_array($this->status, [
+                PostStatus::DRAFT,
+                PostStatus::PENDING_APPROVAL,
+                PostStatus::NEEDS_REVISION,
+            ], true);
     }
 
     public function canBeDeletedBy(User $user): bool

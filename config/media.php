@@ -4,6 +4,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Upload limits (KB) — keep in sync with UI copy and PHP limits
+    |--------------------------------------------------------------------------
+    |
+    | PHP must allow at least this size (upload_max_filesize / post_max_size).
+    | WAMP: edit bin/php/phpX.Y/php.ini. Shared hosting: public/.user.ini.
+    |
+    */
+
+    'max_upload_kb' => (int) env('MEDIA_MAX_UPLOAD_KB', 10240),
+    'max_upload_files' => (int) env('MEDIA_MAX_UPLOAD_FILES', 10),
+
+    /*
+    |--------------------------------------------------------------------------
     | Canva-style embedded image metadata (automation exports)
     |--------------------------------------------------------------------------
     */

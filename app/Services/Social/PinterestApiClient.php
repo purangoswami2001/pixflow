@@ -216,6 +216,190 @@ class PinterestApiClient
         throw new \RuntimeException('No accessible image is available for this Pinterest pin.');
     }
 
+    /**
+     * Register + upload a video, then return media_source for pins/create.
+     *
+     * @return array<string, mixed>
+     */
+    public static function buildVideoMediaSourceForTarget(PostTarget $target, string $accessToken): array
+    {
+        $path = $target->platform_media_path;
+        if (! $path || ! Storage::disk('public')->exists($path)) {
+            throw new \RuntimeException('No local video file is available for this Pinterest pin.');
+        }
+
+        $absolutePath = Storage::disk('public')->path($path);
+        $apiUrl = self::apiUrlForAccount($target->socialAccount);
+        $version = self::version();
+
+        $register = self::api($accessToken)->post("{$apiUrl}/{$version}/media", [
+            'media_type' => 'video',
+        ]);
+
+        if ($register->failed()) {
+            throw new \RuntimeException(
+                'Pinterest video register failed: '.self::errorMessage($register, $register->body())
+            );
+        }
+
+        $registerBody = $register->json() ?? [];
+        $mediaId = $registerBody['media_id'] ?? null;
+        $uploadUrl = $registerBody['upload_url'] ?? null;
+        $uploadParameters = $registerBody['upload_parameters'] ?? [];
+
+        if (! $mediaId || ! $uploadUrl || ! is_array($uploadParameters)) {
+            throw new \RuntimeException('Pinterest did not return video upload credentials.');
+        }
+
+        $contents = file_get_contents($absolutePath);
+        if ($contents === false) {
+            throw new \RuntimeException('Could not read the local video file for Pinterest upload.');
+        }
+
+        $multipart = [];
+        foreach ($uploadParameters as $key => $value) {
+            $multipart[] = ['name' => (string) $key, 'contents' => (string) $value];
+        }
+        $multipart[] = [
+            'name' => 'file',
+            'contents' => $contents,
+            'filename' => basename($absolutePath),
+            'headers' => ['Content-Type' => $target->resolvedMimeType() ?: 'video/mp4'],
+        ];
+
+        $upload = Http::timeout(300)->asMultipart()->post($uploadUrl, $multipart);
+        if ($upload->failed() && $upload->status() >= 400) {
+            throw new \RuntimeException(
+                'Pinterest video file upload failed (HTTP '.$upload->status().').'
+            );
+        }
+
+        // Wait briefly for processing when status endpoint is available.
+        self::waitForVideoReady($accessToken, $apiUrl, $version, (string) $mediaId);
+
+        $cover = self::buildVideoCoverForTarget($target);
+
+        return array_filter([
+            'source_type' => 'video_id',
+            'media_id' => (string) $mediaId,
+            'cover_image_url' => $cover['url'] ?? null,
+            'cover_image_content_type' => $cover['content_type'] ?? null,
+            'cover_image_data' => $cover['data'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
+    }
+
+    protected static function waitForVideoReady(
+        string $accessToken,
+        string $apiUrl,
+        string $version,
+        string $mediaId
+    ): void {
+        for ($i = 0; $i < 12; $i++) {
+            sleep(3);
+            try {
+                $status = self::api($accessToken)->get("{$apiUrl}/{$version}/media/{$mediaId}");
+                if ($status->failed()) {
+                    continue;
+                }
+                $code = strtoupper((string) ($status->json('status') ?? ''));
+                if (in_array($code, ['SUCCEEDED', 'SUCCESS', 'READY', 'FINISHED'], true)) {
+                    return;
+                }
+                if (in_array($code, ['FAILED', 'ERROR'], true)) {
+                    throw new \RuntimeException('Pinterest video processing failed.');
+                }
+            } catch (\RuntimeException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                // Keep waiting — some environments omit status until pin create.
+            }
+        }
+    }
+
+    /**
+     * @return array{url?: string, content_type?: string, data?: string}
+     */
+    public static function buildVideoCoverForTarget(PostTarget $target): array
+    {
+        $path = $target->platform_media_path;
+        $absolute = $path && Storage::disk('public')->exists($path)
+            ? Storage::disk('public')->path($path)
+            : null;
+
+        $framePath = $absolute ? self::extractVideoFrame($absolute) : null;
+        if ($framePath && is_readable($framePath)) {
+            $binary = file_get_contents($framePath);
+            @unlink($framePath);
+            if ($binary !== false && $binary !== '') {
+                return [
+                    'content_type' => 'image/jpeg',
+                    'data' => base64_encode($binary),
+                ];
+            }
+        }
+
+        $placeholder = self::generatePlaceholderCoverJpeg(
+            (string) ($target->post?->title ?? 'Video pin')
+        );
+
+        return [
+            'content_type' => 'image/jpeg',
+            'data' => base64_encode($placeholder),
+        ];
+    }
+
+    protected static function extractVideoFrame(string $absoluteVideoPath): ?string
+    {
+        $ffmpeg = trim((string) shell_exec('where ffmpeg 2>nul'));
+        if ($ffmpeg === '') {
+            $ffmpeg = trim((string) shell_exec('which ffmpeg 2>/dev/null'));
+        }
+        if ($ffmpeg === '') {
+            return null;
+        }
+
+        $ffmpegBin = strtok($ffmpeg, "\r\n") ?: 'ffmpeg';
+        $out = sys_get_temp_dir().DIRECTORY_SEPARATOR.'pixflow_cover_'.uniqid('', true).'.jpg';
+        $cmd = escapeshellarg($ffmpegBin)
+            .' -y -ss 00:00:01 -i '.escapeshellarg($absoluteVideoPath)
+            .' -frames:v 1 -q:v 3 '.escapeshellarg($out).' 2>nul';
+
+        @exec($cmd, $output, $code);
+        if ($code === 0 && is_file($out) && filesize($out) > 0) {
+            return $out;
+        }
+
+        @unlink($out);
+
+        return null;
+    }
+
+    protected static function generatePlaceholderCoverJpeg(string $title): string
+    {
+        $width = 1000;
+        $height = 1500;
+        $image = imagecreatetruecolor($width, $height);
+        $bg = imagecolorallocate($image, 15, 23, 42);
+        $accent = imagecolorallocate($image, 0, 74, 198);
+        $white = imagecolorallocate($image, 255, 255, 255);
+        $muted = imagecolorallocate($image, 148, 163, 184);
+        imagefilledrectangle($image, 0, 0, $width, $height, $bg);
+        imagefilledrectangle($image, 0, 0, $width, 12, $accent);
+
+        $label = 'VIDEO';
+        imagestring($image, 5, (int) (($width - imagefontwidth(5) * strlen($label)) / 2), (int) ($height / 2 - 40), $label, $accent);
+
+        $safeTitle = mb_substr(preg_replace('/[^\x20-\x7E]/', '', $title) ?: 'Video pin', 0, 40);
+        imagestring($image, 3, (int) (($width - imagefontwidth(3) * strlen($safeTitle)) / 2), (int) ($height / 2 + 10), $safeTitle, $white);
+        imagestring($image, 2, (int) (($width - imagefontwidth(2) * 18) / 2), (int) ($height / 2 + 40), 'Posted with PixFlow', $muted);
+
+        ob_start();
+        imagejpeg($image, null, 85);
+        imagedestroy($image);
+
+        return (string) ob_get_clean();
+    }
+
     public static function isPubliclyAccessibleUrl(?string $url): bool
     {
         if (!$url || !filter_var($url, FILTER_VALIDATE_URL)) {
@@ -282,11 +466,13 @@ class PinterestApiClient
      */
     public static function redactPayloadForLog(array $payload): array
     {
-        if (!isset($payload['media_source']['data']) || !is_string($payload['media_source']['data'])) {
-            return $payload;
+        if (isset($payload['media_source']['data']) && is_string($payload['media_source']['data'])) {
+            $payload['media_source']['data'] = '[base64 '.strlen($payload['media_source']['data']).' chars]';
         }
 
-        $payload['media_source']['data'] = '[base64 ' . strlen($payload['media_source']['data']) . ' chars]';
+        if (isset($payload['media_source']['cover_image_data']) && is_string($payload['media_source']['cover_image_data'])) {
+            $payload['media_source']['cover_image_data'] = '[base64 '.strlen($payload['media_source']['cover_image_data']).' chars]';
+        }
 
         return $payload;
     }

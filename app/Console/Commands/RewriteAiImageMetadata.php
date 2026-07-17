@@ -25,7 +25,11 @@ class RewriteAiImageMetadata extends Command
             ->where(function ($query) {
                 $query->where('file_path', 'like', 'media/ai/%')
                     ->orWhereJsonContains('tags', 'ai-generated')
-                    ->orWhere('metadata->source', 'automation');
+                    ->orWhereJsonContains('tags', 'semi-ai')
+                    ->orWhereJsonContains('tags', 'canva')
+                    ->orWhere('metadata->source', 'automation')
+                    ->orWhere('metadata->source', 'semi-ai')
+                    ->orWhere('metadata->source', 'manual-upload');
             })
             ->orderBy('id')
             ->get();

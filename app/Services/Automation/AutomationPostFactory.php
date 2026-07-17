@@ -43,9 +43,6 @@ class AutomationPostFactory
         }
 
         $caption = $copy['caption'];
-        if (! empty($copy['hashtags'])) {
-            $caption .= "\n\n" . implode(' ', $copy['hashtags']);
-        }
 
         $user = AutomationMediaService::aiAgentUser();
 

@@ -45,7 +45,7 @@ class SocialImageSafeZone
         string $imageStyle,
         string $niche = '',
         string $audience = '',
-        string $colorPalette = 'feminine, soft sage, blush pink, lavender, cream'
+        string $colorPalette = 'clean high-contrast palette suited to the niche'
     ): string {
         $styleHint = AutomationImageStyles::promptHint($imageStyle);
         $layout = self::layoutHintForCanvas($width, $height, $imageStyle);

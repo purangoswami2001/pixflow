@@ -7,6 +7,7 @@ use App\Models\ContentTopic;
 use App\Services\Ai\AiTextService;
 use App\Support\AutomationAiProvider;
 use App\Support\AutomationImageStyles;
+use App\Support\PlatformPromptGuardrails;
 
 class AutomationImagePromptService
 {
@@ -30,7 +31,11 @@ class AutomationImagePromptService
             $imageStyle = AutomationImageStyles::defaultForPlatform($platform);
         }
 
-        $system = AutomationImageStyles::systemPromptForStyle($imageStyle);
+        $niche = $category->niche_prompt ?: $category->name;
+        $audience = $category->audience ?: 'adults interested in this topic';
+        $palette = PlatformPromptGuardrails::colorPalette($niche, $audience);
+
+        $system = PlatformPromptGuardrails::imageSystem($platform, $imageStyle, $topic->topic_type ?? 'educational');
 
         $keyPoints = is_array($idea['key_points'] ?? null)
             ? implode("\n", array_slice($idea['key_points'], 0, 5))
@@ -39,9 +44,9 @@ class AutomationImagePromptService
         $title = $copy['title'] ?? $idea['pin_title'] ?? $topic->title;
 
         $rendered = trim($this->renderer->render($platform, 'image', [
-            'niche' => $category->niche_prompt ?? $category->name,
-            'audience' => $category->audience ?? 'women interested in wellness',
-            'safety_rules' => config('automation.safety_enabled', false) ? ($category->safety_rules ?? '') : '',
+            'niche' => $niche,
+            'audience' => $audience,
+            'safety_rules' => config('automation.safety_enabled', false) ? ($category->safety_rules ?? '') : ($category->safety_rules ?? ''),
             'topic' => $topic->title,
             'platform' => $platform,
             'pin_title' => $title,
@@ -50,7 +55,8 @@ class AutomationImagePromptService
             'width' => $width,
             'height' => $height,
             'image_style' => $imageStyle,
-            'color_palette' => 'feminine, soft sage, blush pink, lavender, cream',
+            'color_palette' => $palette,
+            'topic_type' => $topic->topic_type ?? 'educational',
         ]));
 
         if ($rendered !== '' && ! self::templateConflictsWithStyle($rendered, $imageStyle)) {
@@ -66,10 +72,13 @@ class AutomationImagePromptService
                 $width,
                 $height,
                 $imageStyle,
-                $category->niche_prompt ?? $category->name,
-                $category->audience ?? 'women interested in wellness'
+                $niche,
+                $audience,
+                $palette
             );
         }
+
+        $user .= "\n\n".PlatformPromptGuardrails::qualityFooter($platform, $topic->topic_type ?? 'educational', $imageStyle);
 
         $data = $this->text->generateJson($system, $user, AutomationAiProvider::textProviders());
         $designPrompt = trim((string) ($data['design_prompt'] ?? ''));

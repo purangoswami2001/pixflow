@@ -3,14 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\MediaAsset;
+use App\Services\Media\ImageMetadataService;
 use App\Services\Media\MediaConfigService;
+use App\Support\MediaUpload;
+use App\Support\PerPage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class MediaAssetController extends Controller
 {
     public function __construct(
         protected MediaConfigService $mediaConfig,
+        protected ImageMetadataService $imageMetadata,
     ) {}
 
     public function index(Request $request)
@@ -33,8 +39,7 @@ class MediaAssetController extends Controller
             $query->where('preset_key', $request->preset);
         }
 
-        $perPage = (int) $request->query('per_page', 24);
-        $perPage = in_array($perPage, [12, 24, 48, 96], true) ? $perPage : 24;
+        $perPage = PerPage::resolve($request, 10);
 
         $assets = $query->with('user')->paginate($perPage)->withQueryString();
 
@@ -53,6 +58,13 @@ class MediaAssetController extends Controller
             'selectedAsset' => $selectedAsset,
             'channels' => $this->mediaConfig->channels(),
             'presets' => config('social-platforms.presets'),
+        ]);
+    }
+
+    public function create()
+    {
+        return view('media.create', [
+            'channels' => $this->mediaConfig->channels(),
         ]);
     }
 
@@ -85,14 +97,27 @@ class MediaAssetController extends Controller
 
     public function upload(Request $request)
     {
-        $request->validate([
-            'files' => 'required|array|min:1|max:10',
-            'files.*' => 'required|file|mimes:jpeg,png,jpg,webp,mp4|max:10240',
-            'channel' => 'required|string|in:facebook,instagram,pinterest',
-            'media_type' => 'required|string|in:image,video',
-            'preset_key' => 'nullable|string',
-            'alt_text' => 'nullable|string|max:250',
-        ]);
+        if (MediaUpload::postTooLarge()) {
+            return back()->withErrors(['files' => MediaUpload::postTooLargeMessage()]);
+        }
+
+        try {
+            $request->validate(
+                array_merge(MediaUpload::libraryFilesRules(), [
+                    'channel' => 'required|string|in:facebook,instagram,pinterest',
+                    'media_type' => 'required|string|in:image,video',
+                    'preset_key' => 'nullable|string',
+                    'alt_text' => 'nullable|string|max:250',
+                ]),
+                MediaUpload::validationMessages('files')
+            );
+        } catch (ValidationException $e) {
+            throw ValidationException::withMessages(
+                MediaUpload::friendlyValidationErrors($e->errors(), $request->file('files'))
+            );
+        }
+
+        MediaUpload::assertValid($request->file('files'), 'files');
 
         $channel = $request->channel;
         $mediaType = $request->media_type;
@@ -102,43 +127,64 @@ class MediaAssetController extends Controller
             $this->mediaConfig->presetsForChannelAndType($channel, $mediaType)
         )->pluck('key')->all();
 
-        if ($availablePresets && !in_array($presetKey, $availablePresets, true)) {
+        if ($availablePresets && ! in_array($presetKey, $availablePresets, true)) {
             return back()->withErrors(['preset_key' => 'Please select a valid size for this channel and media type.']);
         }
 
-        if (!$availablePresets) {
+        if (! $availablePresets) {
             $presetKey = null;
         }
 
         $preset = $presetKey ? $this->mediaConfig->preset($presetKey) : null;
         $uploaded = 0;
 
-        foreach ($request->file('files') as $file) {
-            $mime = $file->getMimeType();
+        foreach ($request->file('files') as $index => $file) {
+            $mime = $file->getMimeType() ?: 'application/octet-stream';
             $isImage = str_starts_with($mime, 'image/');
             $isVideo = str_starts_with($mime, 'video/');
 
-            if ($mediaType === 'image' && !$isImage) {
-                return back()->withErrors(['files' => 'Selected media type is Image, but an uploaded file is not an image.']);
+            if ($mediaType === 'image' && ! $isImage) {
+                return back()->withErrors(['files' => 'Selected media type is Image, but file '.($index + 1).' is not an image.']);
             }
 
-            if ($mediaType === 'video' && !$isVideo) {
-                return back()->withErrors(['files' => 'Selected media type is Video, but an uploaded file is not a video.']);
+            if ($mediaType === 'video' && ! $isVideo) {
+                return back()->withErrors(['files' => 'Selected media type is Video, but file '.($index + 1).' is not a video.']);
             }
 
             $path = $file->store('media', 'public');
 
             $width = $preset['width'] ?? null;
             $height = $preset['height'] ?? null;
+            $originalName = $file->getClientOriginalName();
+            $fileSize = $file->getSize();
+            $tags = [$channel];
+            $assetMetadata = [
+                'source' => 'manual-upload',
+            ];
 
-            if (!$width || !$height) {
+            if ($isImage) {
                 $fullPath = Storage::disk('public')->path($path);
-                if ($isImage && function_exists('getimagesize')) {
-                    $sizes = getimagesize($fullPath);
+                if ((! $width || ! $height) && function_exists('getimagesize')) {
+                    $sizes = @getimagesize($fullPath);
                     if ($sizes) {
                         $width = $sizes[0];
                         $height = $sizes[1];
                     }
+                }
+
+                try {
+                    // Same Canva-style embedded metadata rewrite as automation exports.
+                    $finalized = $this->imageMetadata->finalizeStoredImage($path);
+                    $path = $finalized['file_path'];
+                    $originalName = $finalized['original_name'];
+                    $fileSize = $finalized['file_size'];
+                    $tags = array_values(array_unique(array_merge($tags, ['canva'])));
+                    $assetMetadata['creator_tool'] = 'Canva';
+                } catch (\Throwable $e) {
+                    Log::warning('Media metadata rewrite skipped after upload', [
+                        'path' => $path,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
 
@@ -146,15 +192,17 @@ class MediaAssetController extends Controller
                 'user_id' => auth()->id(),
                 'file_path' => $path,
                 'disk' => 'public',
-                'original_name' => $file->getClientOriginalName(),
+                'original_name' => $originalName,
                 'mime_type' => $mime,
                 'media_type' => $mediaType,
-                'file_size' => $file->getSize(),
+                'file_size' => $fileSize,
                 'width' => $width,
                 'height' => $height,
                 'preset_key' => $presetKey,
                 'alt_text' => $request->alt_text,
+                'tags' => $tags,
                 'channels' => [$channel],
+                'metadata' => $assetMetadata,
             ]);
 
             $uploaded++;

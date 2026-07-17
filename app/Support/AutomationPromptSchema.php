@@ -202,11 +202,11 @@ Every **image** template string you write must include this block (adapt wording
 Follow the layout for {{image_style}} ONLY. Do not mix styles.
 
 **When {{image_style}} is infographic:**
-- Educational Canva-style layout: lifestyle photo panel + 3–5 scannable sections (line icon + bold heading + one-line body)
-- Pinterest portrait: stacked sections, title header, optional footer CTA
-- Facebook landscape (width > height): split-panel — visual left (~40%), icon sections right
-- Instagram portrait/square: stacked sections with clear hierarchy
+- Educational infographic layout: focal visual panel + 3–5 scannable sections (line icon + bold heading + one-line body)
+- Stay on {{platform}} only — never describe another network’s style
 - Spell exact on-image headlines; keep section headings ≤4 words, body ≤14 words
+- Colors from {{color_palette}} / niche — no default feminine wellness pastels unless niche implies them
+- Never mention Canva or other design-tool brands
 
 **When {{image_style}} is quote:**
 - Centered quote card: ONE main quote line (use {{pin_title}}), optional 1–2 short supporting lines max
@@ -268,7 +268,7 @@ Return a single JSON object (no markdown fences) with this structure:
 ## Reference bundle shape (replace templates with your generated content)
 {$bundleExample}
 
-Generate production-ready templates for a fitness/wellness brand targeting young men (gym, performance, recovery). No [INSERT NICHE] placeholders. Respond with **JSON only**.
+Generate production-ready templates for the brand niche in the placeholders (use {{niche}} / {{audience}} — do not hardcode wellness or fitness). No [INSERT NICHE] placeholders. Respond with **JSON only**.
 PROMPT;
     }
 

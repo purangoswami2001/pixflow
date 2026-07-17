@@ -47,12 +47,17 @@ class PinterestPublisher implements SocialPublisherInterface
             }
 
             if (!$target->hasDisplayableMedia()) {
-                return $this->failed('Pinterest Pins must include an image.');
+                return $this->failed('Pinterest Pins must include an image or video.');
             }
 
             $endpoint = "{$apiUrl}/{$apiVersion}/pins";
 
-            $mediaSource = PinterestApiClient::buildImageMediaSourceForTarget($target);
+            if ($target->isVideoMedia()) {
+                $mediaSource = PinterestApiClient::buildVideoMediaSourceForTarget($target, $accessToken);
+            } else {
+                $mediaSource = PinterestApiClient::buildImageMediaSourceForTarget($target);
+            }
+
             $payload = $this->platformFields->buildPinterestApiPayload($target, $mediaSource);
 
             $requestLog = [

@@ -1,112 +1,152 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full bg-gray-50 dark:bg-zinc-950">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PixFlow — Plan, create, and publish across social</title>
+    <meta name="description" content="PixFlow helps teams schedule Facebook, Instagram, and Pinterest posts with AI automation, media tools, approvals, and reliable publishing.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Hanken+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <link href="{{ asset('css/pixflow.css') }}" rel="stylesheet">
+</head>
+<body class="pp-landing antialiased">
+    <header class="pp-landing-nav">
+        <a href="/" class="pp-landing-brand" aria-label="PixFlow home">
+            <span class="pp-landing-brand-mark">
+                <span class="material-symbols-outlined filled text-[22px]">bolt</span>
+            </span>
+            <span class="pp-landing-brand-name">PixFlow</span>
+        </a>
+        <div class="flex items-center gap-2 sm:gap-3">
+            @auth
+                <a href="{{ route('dashboard') }}" class="pp-btn-primary text-sm py-2 px-4">Open app</a>
+            @else
+                <a href="{{ route('login') }}" class="hidden sm:inline text-sm font-semibold text-[#434655] hover:text-[#004ac6] transition">Sign in</a>
+                <a href="{{ route('login') }}" class="pp-btn-primary text-sm py-2 px-4">Get started</a>
+            @endauth
+        </div>
+    </header>
 
-        <title>PixFlow - Social Media Scheduling Platform</title>
-
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
-        <link href="{{ asset('css/pixflow.css') }}" rel="stylesheet">
-        <style>
-            body {
-                font-family: 'Plus Jakarta Sans', sans-serif;
-            }
-        </style>
-    </head>
-    <body class="h-full antialiased text-gray-900 dark:text-zinc-100 bg-gray-50 dark:bg-zinc-950">
-        <!-- Navigation Header -->
-        <header class="sticky top-0 z-40 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b border-gray-100 dark:border-zinc-800">
-            <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-                <a href="#" class="flex items-center gap-2 font-bold text-xl tracking-tight text-indigo-600 dark:text-indigo-400">
-                    <svg class="h-8 w-8 text-indigo-600 dark:text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                    </svg>
-                    <span>PixFlow</span>
-                </a>
-                
-                <div class="flex items-center gap-4">
-                    @auth
-                        <a href="{{ route('dashboard') }}" class="text-sm font-semibold text-gray-700 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition">Go to Dashboard</a>
-                    @else
-                        <a href="{{ route('login') }}" class="text-sm font-semibold text-gray-700 dark:text-zinc-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition">Sign in</a>
-                    @endauth
-                </div>
-            </div>
-        </header>
-
-        <!-- Hero Section -->
-        <section class="py-24 px-6 max-w-7xl mx-auto text-center relative overflow-hidden">
-            <!-- Background glow -->
-            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none"></div>
-
-            <div class="relative z-10 max-w-3xl mx-auto space-y-8">
-                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-full border border-indigo-100 dark:border-indigo-900">
-                    🚀 Introducing PixFlow SaaS Platform
-                </span>
-                <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-gray-900 dark:text-zinc-550 leading-none">
-                    Schedule and Publish to <span class="bg-gradient-to-r from-indigo-500 via-pink-500 to-red-500 bg-clip-text text-transparent">Social Channels</span> Autonomously
-                </h1>
-                <p class="text-lg text-gray-500 dark:text-zinc-400">
-                    Connect Facebook Pages, Instagram Creators, and Pinterest Boards. Upload assets, auto-crop to platform dimensions, generate AI captions, and orchestrate weekly recurring posting queues.
+    <section class="pp-landing-hero">
+        <div class="pp-landing-hero-grid" aria-hidden="true"></div>
+        <div class="pp-landing-hero-inner">
+            <div>
+                <h1 class="pp-landing-kicker">PixFlow</h1>
+                <p class="pp-landing-lede">
+                    One workspace to plan, approve, and publish social content — with AI automation that keeps your channels moving.
                 </p>
-
-                <div class="flex items-center justify-center gap-4">
-                    @auth
-                        <a href="{{ route('dashboard') }}" class="inline-flex items-center justify-center px-6 py-3.5 text-base font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-lg transition">Go to Dashboard</a>
-                    @else
-                        <a href="{{ route('login') }}" class="inline-flex items-center justify-center px-6 py-3.5 text-base font-semibold text-gray-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 border border-gray-250 dark:border-zinc-800 hover:bg-gray-50 rounded-xl transition">Sign In</a>
-                    @endauth
-                </div>
+                <a href="{{ auth()->check() ? route('dashboard') : route('login') }}" class="pp-landing-cta">
+                    {{ auth()->check() ? 'Go to dashboard' : 'Start scheduling' }}
+                    <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+                </a>
             </div>
-        </section>
 
-        <!-- Features Grid -->
-        <section class="py-20 bg-white dark:bg-zinc-900 border-t border-b border-gray-100 dark:border-zinc-800">
-            <div class="max-w-7xl mx-auto px-6">
-                <div class="text-center max-w-xl mx-auto mb-16 space-y-4">
-                    <h2 class="text-3xl font-extrabold text-gray-900 dark:text-zinc-50">Intelligent Scheduling Operations</h2>
-                    <p class="text-sm text-gray-500">Everything you need to orchestrate multinetwork campaigns from a single dashboard.</p>
+            <div class="pp-landing-stage" aria-hidden="true">
+                <div class="pp-landing-stage-bar">
+                    <span class="pp-landing-stage-dot"></span>
+                    <span class="pp-landing-stage-dot"></span>
+                    <span class="pp-landing-stage-dot"></span>
                 </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <!-- Feature 1 -->
-                    <div class="p-8 bg-gray-50 dark:bg-zinc-950 rounded-2xl border dark:border-zinc-850 space-y-4">
-                        <div class="h-10 w-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold">1</div>
-                        <h3 class="text-lg font-bold text-gray-900 dark:text-zinc-50">Unified Media Library</h3>
-                        <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">
-                            Upload photos/videos and crop them center-fill or inside-fit using dimensions tuned for Instagram Stories, Pinterest Pins, and Facebook Cards.
-                        </p>
+                <div class="pp-landing-stage-body">
+                    <div class="pp-landing-mock-row">
+                        <div class="pp-landing-mock-card">
+                            <div class="pp-landing-mock-line"></div>
+                            <div class="pp-landing-mock-line short"></div>
+                        </div>
+                        <div class="pp-landing-mock-card">
+                            <div class="pp-landing-mock-line"></div>
+                            <div class="pp-landing-mock-line short"></div>
+                        </div>
+                        <div class="pp-landing-mock-card">
+                            <div class="pp-landing-mock-line"></div>
+                            <div class="pp-landing-mock-line short"></div>
+                        </div>
                     </div>
-
-                    <!-- Feature 2 -->
-                    <div class="p-8 bg-gray-50 dark:bg-zinc-950 rounded-2xl border dark:border-zinc-850 space-y-4">
-                        <div class="h-10 w-10 bg-pink-600 text-white rounded-xl flex items-center justify-center font-bold">2</div>
-                        <h3 class="text-lg font-bold text-gray-900 dark:text-zinc-50">7-Step Wizard</h3>
-                        <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">
-                            A multi-step compiler supporting platform selecting, profile checking, AI templates drafting, timezone adjustments, and live mock rendering preview.
-                        </p>
-                    </div>
-
-                    <!-- Feature 3 -->
-                    <div class="p-8 bg-gray-50 dark:bg-zinc-950 rounded-2xl border dark:border-zinc-850 space-y-4">
-                        <div class="h-10 w-10 bg-red-600 text-white rounded-xl flex items-center justify-center font-bold">3</div>
-                        <h3 class="text-lg font-bold text-gray-900 dark:text-zinc-50">Queued Publication Engine</h3>
-                        <p class="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed">
-                            Leverages Laravel queue workers, automatic retries, cache locking keys, and daily token refreshes to guarantee delivery metrics.
-                        </p>
+                    <div class="pp-landing-mock-calendar">
+                        @foreach(range(1, 28) as $d)
+                            <div class="pp-landing-mock-day {{ in_array($d, [3, 8, 12, 17, 21, 25], true) ? 'is-on' : '' }}"></div>
+                        @endforeach
                     </div>
                 </div>
             </div>
-        </section>
+        </div>
+    </section>
 
-        <!-- Footer -->
-        <footer class="py-12 text-center text-xs text-gray-400 dark:text-zinc-600 border-t border-gray-100 dark:border-zinc-900">
-            <p>&copy; {{ date('Y') }} PixFlow Scheduler. Powered by Laravel 11 & Livewire. All rights reserved.</p>
-        </footer>
-    </body>
+    <section class="pp-landing-section">
+        <h2 class="pp-landing-section-title pp-reveal">Built for modern social ops</h2>
+        <p class="pp-landing-section-copy pp-reveal pp-reveal-delay-1">
+            From media prep to multi-channel publishing, PixFlow covers the full workflow — including AI generation, team approvals, and agent review.
+        </p>
+        <div class="pp-landing-features">
+            @foreach([
+                ['icon' => 'hub', 'title' => 'Connected profiles', 'text' => 'Link Facebook Pages, Instagram business accounts, and Pinterest boards in one admin workspace.'],
+                ['icon' => 'perm_media', 'title' => 'Media library', 'text' => 'Upload images and video, organize assets, and reuse them across posts with platform-ready crops.'],
+                ['icon' => 'edit_note', 'title' => 'Post composer', 'text' => 'Guided create flow with captions, hashtags, channel settings, and Semi-AI assist when you want help.'],
+                ['icon' => 'calendar_month', 'title' => 'Calendar & queues', 'text' => 'See what goes out when. Schedule once, recur weekly, or pin posts into your publishing queue.'],
+                ['icon' => 'smart_toy', 'title' => 'AI automation', 'text' => 'Campaigns generate ideas, copy, and images — then hand posts to Auto Review before anything publishes.'],
+                ['icon' => 'verified_user', 'title' => 'Team approvals', 'text' => 'Creators submit work. Admins approve, request revision, or reject — with clear notifications either way.'],
+                ['icon' => 'rocket_launch', 'title' => 'Reliable publishing', 'text' => 'Queue workers publish with retries, logs, and failure alerts so you know what succeeded and what needs attention.'],
+                ['icon' => 'notifications', 'title' => 'Live notifications', 'text' => 'Stay on top of publish results, pipeline status, agent decisions, and approval outcomes with sound alerts.'],
+                ['icon' => 'devices', 'title' => 'Works everywhere', 'text' => 'Responsive layouts for phone, tablet, and desktop so your team can review and ship from any device.'],
+            ] as $i => $feature)
+                <article class="pp-landing-feature pp-reveal pp-reveal-delay-{{ ($i % 4) + 1 }}">
+                    <div class="pp-landing-feature-icon">
+                        <span class="material-symbols-outlined">{{ $feature['icon'] }}</span>
+                    </div>
+                    <h3>{{ $feature['title'] }}</h3>
+                    <p>{{ $feature['text'] }}</p>
+                </article>
+            @endforeach
+        </div>
+    </section>
+
+    <section class="pp-landing-section" style="padding-top:0">
+        <div class="pp-landing-split">
+            <div class="pp-reveal">
+                <h2 class="pp-landing-section-title">How teams ship with PixFlow</h2>
+                <p class="pp-landing-section-copy" style="margin-bottom:0">
+                    A simple loop: connect channels, create or generate content, approve, and publish — without hopping between tools.
+                </p>
+            </div>
+            <div class="pp-landing-steps pp-reveal pp-reveal-delay-2">
+                @foreach([
+                    ['Connect', 'Admin links social profiles once. The team creates against those destinations.'],
+                    ['Create or automate', 'Build posts manually, with Semi-AI, or let campaigns generate a full pipeline batch.'],
+                    ['Review & publish', 'Approve pending work, let the agent score automation posts, then schedule or publish now.'],
+                ] as $i => $step)
+                    <div class="pp-landing-step">
+                        <span class="pp-landing-step-num">{{ $i + 1 }}</span>
+                        <div>
+                            <p class="font-semibold text-[#131b2e] mb-1">{{ $step[0] }}</p>
+                            <p class="text-sm text-[#5b6478] leading-relaxed m-0">{{ $step[1] }}</p>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </section>
+
+    <section class="pp-landing-band">
+        <div class="pp-landing-band-inner">
+            <div>
+                <h2 class="pp-landing-section-title" style="color:#fff;margin-bottom:.5rem">Ready when your content is</h2>
+                <p style="margin:0;color:rgba(255,255,255,.72);max-width:32rem;line-height:1.55">
+                    Sign in to connect channels, invite your team, and start scheduling with AI-assisted workflows.
+                </p>
+            </div>
+            <a href="{{ auth()->check() ? route('dashboard') : route('login') }}" class="pp-landing-cta">
+                {{ auth()->check() ? 'Open PixFlow' : 'Sign in to PixFlow' }}
+                <span class="material-symbols-outlined text-[20px]">login</span>
+            </a>
+        </div>
+    </section>
+
+    <footer class="pp-landing-footer">
+        © {{ date('Y') }} PixFlow · Social scheduling for modern teams
+    </footer>
+
+    <script src="{{ asset('js/pixflow-ui.js') }}"></script>
+</body>
 </html>

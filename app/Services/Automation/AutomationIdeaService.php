@@ -6,6 +6,7 @@ use App\Models\ContentCategory;
 use App\Models\ContentTopic;
 use App\Services\Ai\AiTextService;
 use App\Support\AutomationAiProvider;
+use App\Support\PlatformPromptGuardrails;
 
 class AutomationIdeaService
 {
@@ -17,20 +18,25 @@ class AutomationIdeaService
 
     public function generate(ContentCategory $category, ContentTopic $topic, string $platform, string $topicType): array
     {
-        $system = 'You are an expert social media strategist for health and wellness brands. '
-            . 'Respond with valid JSON only.'
-            . (config('automation.safety_enabled', false) ? ' Content must be evidence-based and safe.' : '');
+        $system = PlatformPromptGuardrails::ideaSystem($platform, $topicType)
+            .(config('automation.safety_enabled', false) ? ' Content must be evidence-based and safe.' : '')
+            .' Respond with valid JSON only.';
+
+        $niche = $category->niche_prompt ?: $category->name;
+        $audience = $category->audience ?: 'adults interested in this topic';
 
         $user = $this->renderer->render($platform, 'idea', [
-            'niche' => $category->niche_prompt ?? $category->name,
-            'audience' => $category->audience ?? 'women interested in wellness',
+            'niche' => $niche,
+            'audience' => $audience,
             'safety_rules' => config('automation.safety_enabled', false)
-                ? ($category->safety_rules ?? 'No cure claims. Use may help language.')
-                : '',
+                ? ($category->safety_rules ?? 'Be accurate. Avoid absolute claims without evidence.')
+                : ($category->safety_rules ?? ''),
             'topic' => $topic->title,
             'topic_type' => $topicType,
             'platform' => $platform,
+            'color_palette' => PlatformPromptGuardrails::colorPalette($niche, $audience),
         ]);
+        $user .= "\n\n".PlatformPromptGuardrails::qualityFooter($platform, $topicType);
 
         $data = $this->text->generateJson($system, $user, AutomationAiProvider::textProviders());
 

@@ -1,12 +1,28 @@
 <article class="pp-card overflow-hidden" data-run-item-id="{{ $item->id }}" data-run-item-revision="{{ \App\Support\AutomationRunItemPresenter::revision($item) }}">
+    @php
+        $retryCount = (int) ($item->metadata['retry_count'] ?? 0);
+        $statusLabel = str_replace('_', ' ', $item->status);
+        if ($item->status === 'post_created') {
+            $statusLabel = 'success';
+        }
+    @endphp
     <div class="px-5 py-4 border-b border-[#e8eaf5] flex flex-wrap justify-between gap-3 items-start bg-white" data-live-section="header">
         <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2 mb-2">
                 @include('admin.automation._platform-chip', ['platform' => $item->platform])
                 <span class="text-xs text-[#737686] capitalize">{{ $item->topic_type }}</span>
                 <span class="pp-status-badge {{ $item->status === 'post_created' ? 'pp-status-badge--success' : ($item->status === 'failed' ? 'pp-status-badge--danger' : 'pp-status-badge--running') }}" data-item-status-badge>
-                    {{ str_replace('_', ' ', $item->status) }}
+                    {{ $statusLabel }}
                 </span>
+                @if($retryCount > 0 && $item->status === 'post_created')
+                    <span class="text-[10px] font-semibold uppercase tracking-wide text-[#737686]" data-item-retry-chip>
+                        {{ $retryCount }} {{ \Illuminate\Support\Str::plural('retry', $retryCount) }}
+                    </span>
+                @elseif($retryCount > 0 && $item->status === 'failed')
+                    <span class="text-[10px] font-semibold uppercase tracking-wide text-red-600" data-item-retry-chip>
+                        failed after {{ $retryCount }} {{ \Illuminate\Support\Str::plural('retry', $retryCount) }}
+                    </span>
+                @endif
             </div>
             <p class="font-semibold text-[#131b2e] leading-snug">{{ $item->topic?->title ?? '—' }}</p>
         </div>

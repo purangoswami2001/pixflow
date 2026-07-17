@@ -4,6 +4,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SocialAccountController;
 use App\Http\Controllers\MediaAssetController;
 use App\Http\Controllers\PostController;
+use App\Http\Controllers\SemiAiAssistController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
@@ -25,6 +26,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Social Profiles (admin only — team creates posts for admin's connected profiles)
     Route::middleware('admin')->group(function () {
         Route::get('/accounts', [SocialAccountController::class, 'index'])->name('accounts.index');
+        Route::get('/accounts/connect', [SocialAccountController::class, 'connect'])->name('accounts.connect');
         Route::post('/accounts/mock', [SocialAccountController::class, 'connectMock'])->name('accounts.mock');
         Route::post('/accounts/{id}/sync', [SocialAccountController::class, 'sync'])->name('accounts.sync');
         Route::get('/accounts/{id}/pinterest/boards', [SocialAccountController::class, 'selectPinterestBoard'])->name('accounts.pinterest.boards');
@@ -35,6 +37,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Media Library
     Route::get('/media', [MediaAssetController::class, 'index'])->name('media.index');
+    Route::get('/media/create', [MediaAssetController::class, 'create'])->name('media.create');
     Route::get('/media/options', [MediaAssetController::class, 'options'])->name('media.options');
     Route::post('/media/upload', [MediaAssetController::class, 'upload'])->name('media.upload');
     Route::post('/media/{id}/metadata', [MediaAssetController::class, 'saveMetadata'])->name('media.metadata');
@@ -54,6 +57,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // AI Caption suggestion (JSON Endpoint)
     Route::post('/api/caption-suggest', [PostController::class, 'suggestCaption'])->name('posts.suggest');
+
+    // In-app notifications
+    Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'page'])->name('notifications.page');
+    Route::get('/api/notifications', [\App\Http\Controllers\NotificationController::class, 'feed'])->name('notifications.feed');
+    Route::post('/api/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'markAllRead'])->name('notifications.read-all.form');
+    Route::post('/api/notifications/{id}/read', [\App\Http\Controllers\NotificationController::class, 'markRead'])->name('notifications.read');
+
+    // Semi-AI Assist (prompt kit + paste JSON, no API keys required)
+    Route::post('/api/posts/semi-ai/draft-progress', [SemiAiAssistController::class, 'saveDraftProgress'])->name('posts.semi-ai.draft-progress');
+    Route::post('/api/posts/semi-ai/idea-prompt', [SemiAiAssistController::class, 'ideaPrompt'])->name('posts.semi-ai.idea-prompt');
+    Route::post('/api/posts/semi-ai/validate-idea', [SemiAiAssistController::class, 'validateIdea'])->name('posts.semi-ai.validate-idea');
+    Route::post('/api/posts/semi-ai/validate-copy', [SemiAiAssistController::class, 'validateCopy'])->name('posts.semi-ai.validate-copy');
+    Route::post('/api/posts/semi-ai/validate-image', [SemiAiAssistController::class, 'validateImage'])->name('posts.semi-ai.validate-image');
+    Route::post('/api/posts/semi-ai/upload-image', [SemiAiAssistController::class, 'uploadImage'])->name('posts.semi-ai.upload-image');
 
     // Admin Panel
     Route::middleware('admin')->group(function () {
@@ -103,6 +121,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/runs/{run}/feed', [\App\Http\Controllers\Admin\AutomationController::class, 'runFeed'])->name('runs.feed');
             Route::get('/logs', [\App\Http\Controllers\Admin\AutomationController::class, 'logs'])->name('logs');
             Route::get('/logs/feed', [\App\Http\Controllers\Admin\AutomationController::class, 'logsFeed'])->name('logs.feed');
+            Route::get('/auto-review', [\App\Http\Controllers\Admin\AutoReviewController::class, 'index'])->name('auto-review');
+            Route::post('/auto-review/scan', [\App\Http\Controllers\Admin\AutoReviewController::class, 'scan'])->name('auto-review.scan');
+            Route::get('/auto-review/{id}', [\App\Http\Controllers\Admin\AutoReviewController::class, 'show'])->name('auto-review.show');
+            Route::post('/auto-review/{id}', [\App\Http\Controllers\Admin\AutoReviewController::class, 'reviewOne'])->name('auto-review.review');
             Route::put('/topics/{topic}', [\App\Http\Controllers\Admin\AutomationController::class, 'updateTopic'])->name('topics.update');
             Route::post('/run-items/{item}/retry', [\App\Http\Controllers\Admin\AutomationController::class, 'retryRunItem'])->name('run-items.retry');
         });
@@ -114,6 +136,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::patch('/profile/theme', [\App\Http\Controllers\ThemeController::class, 'update'])->name('profile.theme');
 });
 
 require __DIR__.'/auth.php';

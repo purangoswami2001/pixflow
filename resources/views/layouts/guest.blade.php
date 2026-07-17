@@ -13,10 +13,10 @@
     <div class="pp-auth-card">
         <a href="{{ url('/') }}" class="pp-auth-logo">
             <div class="pp-auth-logo-icon">
-                <span class="material-symbols-outlined text-[28px]">send</span>
+                <span class="material-symbols-outlined filled text-[28px]">bolt</span>
             </div>
             <h1>PixFlow</h1>
-            <p>Social scheduling made simple</p>
+            <p>Plan. Approve. Publish.</p>
         </a>
 
         {{ $slot }}
