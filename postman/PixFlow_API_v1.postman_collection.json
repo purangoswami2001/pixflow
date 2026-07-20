@@ -1,0 +1,387 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "PixFlow API v1",
+    "description": "PixFlow REST API — auth + Pinterest pin create/schedule.\n\n**Setup**\n1. `base_url` = http://pixflow.local.in\n2. Run **Auth → Login** (saves `{{token}}`)\n3. Run **Accounts → List** to get boards\n\nSchedule times are always **IST (Asia/Kolkata)**. No timezone field.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://pixflow.local.in"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "account_id",
+      "value": "1"
+    },
+    {
+      "key": "board_id",
+      "value": "1"
+    },
+    {
+      "key": "post_id",
+      "value": "1"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.token) {",
+                  "        pm.collectionVariables.set('token', json.token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password\",\n  \"device_name\": \"postman\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Login and receive Bearer token. Token is saved to `{{token}}` automatically."
+          },
+          "response": []
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Accounts",
+      "item": [
+        {
+          "name": "List Pinterest Accounts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.data && json.data.length) {",
+                  "        pm.collectionVariables.set('account_id', String(json.data[0].id));",
+                  "        if (json.data[0].destinations && json.data[0].destinations.length) {",
+                  "            pm.collectionVariables.set('board_id', String(json.data[0].destinations[0].id));",
+                  "        }",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "accounts"]
+            },
+            "description": "Lists connected Pinterest accounts and their boards. Saves `account_id` and `board_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Boards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts/{{account_id}}/destinations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "accounts", "{{account_id}}", "destinations"]
+            },
+            "description": "List boards for a Pinterest account."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Posts",
+      "item": [
+        {
+          "name": "Create Pinterest Post",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.data && json.data.id) {",
+                  "        pm.collectionVariables.set('post_id', String(json.data.id));",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "channel",
+                  "value": "pinterest",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "Sunset over the coast",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Golden hour vibes — save this pin for your next trip.",
+                  "type": "text"
+                },
+                {
+                  "key": "link",
+                  "value": "https://example.com/sunset",
+                  "type": "text",
+                  "description": "Optional pin destination URL"
+                },
+                {
+                  "key": "board_name",
+                  "value": "Wanderlust Board",
+                  "type": "text",
+                  "description": "Or use board_id instead"
+                },
+                {
+                  "key": "schedule_time",
+                  "value": "2026-07-21 15:30",
+                  "type": "text",
+                  "description": "IST datetime (Asia/Kolkata)"
+                },
+                {
+                  "key": "hashtags",
+                  "value": "travel,sunset,coast",
+                  "type": "text",
+                  "description": "Optional, comma-separated"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "Required JPEG/PNG/WebP"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "posts"]
+            },
+            "description": "Create and schedule a Pinterest pin.\n\n**Fields**\n| Field | Required | Notes |\n|-------|----------|-------|\n| channel | yes | always `pinterest` |\n| title | yes | max 100 |\n| description | yes | pin description |\n| link | no | destination URL |\n| board_name or board_id | yes | selected board |\n| schedule_time | yes | IST e.g. `2026-07-21 15:30` |\n| hashtags | no | comma-separated |\n| image | yes | image file |\n\nTimezone is fixed to IST — do not send timezone."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Pinterest Post (by board_id)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "channel",
+                  "value": "pinterest",
+                  "type": "text"
+                },
+                {
+                  "key": "title",
+                  "value": "City lights pin",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Night skyline inspiration for your mood board.",
+                  "type": "text"
+                },
+                {
+                  "key": "link",
+                  "value": "https://example.com/city",
+                  "type": "text"
+                },
+                {
+                  "key": "board_id",
+                  "value": "{{board_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "schedule_time",
+                  "value": "2026-07-22 18:00",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": [],
+                  "description": "Required JPEG/PNG/WebP"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "posts"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Posts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts?per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "posts"],
+              "query": [
+                {
+                  "key": "per_page",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "approved",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Post",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "posts", "{{post_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

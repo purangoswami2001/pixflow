@@ -25,7 +25,7 @@ return new class extends Migration
                     ? SocialDestination::find($target->social_destination_id)
                     : null;
 
-                if (!$account && !$destination) {
+                if (! $account && ! $destination) {
                     continue;
                 }
 
@@ -40,8 +40,7 @@ return new class extends Migration
             $table->dropForeign(['social_destination_id']);
         });
 
-        DB::statement('ALTER TABLE post_targets MODIFY social_account_id BIGINT UNSIGNED NULL');
-        DB::statement('ALTER TABLE post_targets MODIFY social_destination_id BIGINT UNSIGNED NULL');
+        $this->makeAccountColumnsNullable();
 
         Schema::table('post_targets', function (Blueprint $table) {
             $table->foreign('social_account_id')
@@ -62,8 +61,7 @@ return new class extends Migration
             $table->dropForeign(['social_destination_id']);
         });
 
-        DB::statement('ALTER TABLE post_targets MODIFY social_account_id BIGINT UNSIGNED NOT NULL');
-        DB::statement('ALTER TABLE post_targets MODIFY social_destination_id BIGINT UNSIGNED NOT NULL');
+        $this->makeAccountColumnsRequired();
 
         Schema::table('post_targets', function (Blueprint $table) {
             $table->foreign('social_account_id')
@@ -76,5 +74,39 @@ return new class extends Migration
                 ->cascadeOnDelete();
             $table->dropColumn('connection_snapshot');
         });
+    }
+
+    protected function makeAccountColumnsNullable(): void
+    {
+        $driver = Schema::getConnection()->getDriverName();
+
+        if ($driver === 'sqlite') {
+            Schema::table('post_targets', function (Blueprint $table) {
+                $table->unsignedBigInteger('social_account_id')->nullable()->change();
+                $table->unsignedBigInteger('social_destination_id')->nullable()->change();
+            });
+
+            return;
+        }
+
+        DB::statement('ALTER TABLE post_targets MODIFY social_account_id BIGINT UNSIGNED NULL');
+        DB::statement('ALTER TABLE post_targets MODIFY social_destination_id BIGINT UNSIGNED NULL');
+    }
+
+    protected function makeAccountColumnsRequired(): void
+    {
+        $driver = Schema::getConnection()->getDriverName();
+
+        if ($driver === 'sqlite') {
+            Schema::table('post_targets', function (Blueprint $table) {
+                $table->unsignedBigInteger('social_account_id')->nullable(false)->change();
+                $table->unsignedBigInteger('social_destination_id')->nullable(false)->change();
+            });
+
+            return;
+        }
+
+        DB::statement('ALTER TABLE post_targets MODIFY social_account_id BIGINT UNSIGNED NOT NULL');
+        DB::statement('ALTER TABLE post_targets MODIFY social_destination_id BIGINT UNSIGNED NOT NULL');
     }
 };
