@@ -74,6 +74,7 @@ class PublishPostTargetJob implements ShouldQueue
 
             // Log response inside Database Audit logs
             PublishLog::create([
+                'organization_id' => $target->post?->organization_id ?? $target->organization_id,
                 'post_target_id' => $target->id,
                 'provider' => $target->provider,
                 'status' => $result['status'] === 'success' ? 'success' : 'failed',
@@ -167,6 +168,7 @@ class PublishPostTargetJob implements ShouldQueue
                     'success',
                     $link,
                     ['post_id' => $post?->id, 'target_id' => $target->id, 'provider' => $provider],
+                    $post?->organization_id ?? $target->organization_id,
                 );
             } else {
                 $notifications->notifyAdmins(
@@ -176,6 +178,7 @@ class PublishPostTargetJob implements ShouldQueue
                     'danger',
                     $link,
                     ['post_id' => $post?->id, 'target_id' => $target->id, 'provider' => $provider, 'error' => $error],
+                    $post?->organization_id ?? $target->organization_id,
                 );
             }
         } catch (\Throwable $e) {

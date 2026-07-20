@@ -15,7 +15,8 @@ class AutomationPipelineService
         protected AutomationImagePromptService $imagePrompts,
         protected ImageGenerationService $images,
         protected AutomationMediaService $media,
-        protected AutomationPostFactory $posts
+        protected AutomationPostFactory $posts,
+        protected AutomationActorResolver $actors,
     ) {
     }
 
@@ -291,14 +292,15 @@ class AutomationPipelineService
             return $asset;
         }
 
-        $agent = AutomationMediaService::aiAgentUser();
+        $actor = $this->actors->forCampaign($item->run->campaign);
         $started = microtime(true);
         $asset = $this->media->createAssetFromGenerated(
-            $agent,
+            $actor,
             $imageResult['path'],
             $platform,
             $presetKey,
-            $copy['title'] ?? $topic->title
+            $copy['title'] ?? $topic->title,
+            $item->organization_id ?? $item->run?->organization_id ?? $item->run?->campaign?->organization_id,
         );
         AutomationPipelineState::save($item, 'media_asset_id', $asset->id);
         AutomationGenerationLogger::step('media_asset_created', [
@@ -342,6 +344,7 @@ class AutomationPipelineService
                 'info',
                 route('admin.automation.auto-review'),
                 ['post_id' => $post->id, 'run_item_id' => $item->id, 'platform' => $item->platform],
+                $post->organization_id,
             );
         } catch (\Throwable $e) {
             report($e);

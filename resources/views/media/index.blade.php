@@ -38,7 +38,7 @@
                 @php
                     $isVideo = ($asset->media_type === 'video')
                         || str_starts_with($asset->mime_type ?? '', 'video/');
-                    $uploader = $asset->user?->name ?? 'Unknown';
+                    $uploader = $asset->uploaderLabel();
                 @endphp
                 <div class="pp-card overflow-hidden media-card-hover group transition-all duration-300 hover:border-[#004ac6] flex flex-col">
                     <div class="aspect-square relative overflow-hidden bg-[#0a0a0a]">

@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Models\Post;
 use App\Models\PostTarget;
-use App\Models\User;
 use App\Models\SocialAccount;
 use App\Models\SocialDestination;
 use App\Models\MediaAsset;
@@ -30,6 +30,8 @@ use Carbon\Carbon;
 
 class PostController extends Controller
 {
+    use ResolvesOrganization;
+
     protected PostSchedulerService $scheduler;
 
     public function __construct(
@@ -51,7 +53,8 @@ class PostController extends Controller
         $search = trim((string) $request->query('search', ''));
         $isAdmin = auth()->user()->isAdmin();
 
-        $query = Post::with(['user', 'targets.socialAccount', 'targets.socialDestination', 'recurringSchedule']);
+        $query = Post::with(['user', 'targets.socialAccount', 'targets.socialDestination', 'recurringSchedule'])
+            ->forCurrentOrganization();
 
         if (! $isAdmin) {
             $query->where('user_id', auth()->id());
@@ -93,14 +96,15 @@ class PostController extends Controller
         $posts = $query->paginate($perPage)->withQueryString();
         $scheduleMap = $this->queueSchedule->targetScheduleMap();
 
-        $countsQuery = Post::query();
+        $countsQuery = Post::query()->forCurrentOrganization();
         if (! $isAdmin) {
             $countsQuery->where('user_id', auth()->id());
         }
 
         $viewPost = null;
         if ($request->filled('view')) {
-            $viewQuery = Post::with(['targets.socialAccount', 'targets.socialDestination', 'targets.mediaAsset', 'user']);
+            $viewQuery = Post::with(['targets.socialAccount', 'targets.socialDestination', 'targets.mediaAsset', 'user'])
+                ->forCurrentOrganization();
             if (! $isAdmin) {
                 $viewQuery->where('user_id', auth()->id());
             }
@@ -166,6 +170,7 @@ class PostController extends Controller
         })->values();
 
         $categories = ContentCategory::query()
+            ->forCurrentOrganization()
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -183,6 +188,7 @@ class PostController extends Controller
             'channels' => $this->mediaConfig->channels(),
             'presets' => config('social-platforms.presets'),
             'aiConfigured' => AiConfig::isConfigured(),
+            'aiModeEnabled' => (bool) $this->currentOrganization()->ai_enabled,
             'aiProvider' => AiConfig::providerLabel(),
             'platformFields' => config('post-platform-fields'),
             'contentCategories' => $categories,
@@ -195,22 +201,37 @@ class PostController extends Controller
 
     protected function organizationAccounts()
     {
-        $adminIds = User::role('admin')->pluck('id');
-
         return SocialAccount::with('destinations')
+            ->forCurrentOrganization()
             ->where('status', 'active')
-            ->whereIn('user_id', $adminIds)
             ->get();
+    }
+
+    protected function scopedPosts()
+    {
+        $query = Post::query()->forCurrentOrganization();
+
+        if (! auth()->user()->isAdmin()) {
+            $query->where('user_id', auth()->id());
+        }
+
+        return $query;
+    }
+
+    protected function scopedMedia()
+    {
+        $query = MediaAsset::query()->forCurrentOrganization();
+
+        if (! auth()->user()->isAdmin()) {
+            $query->where('user_id', auth()->id());
+        }
+
+        return $query;
     }
 
     protected function findEditablePost($id): Post
     {
-        $query = Post::query();
-        if (!auth()->user()->isAdmin()) {
-            $query->where('user_id', auth()->id());
-        }
-
-        $post = $query->findOrFail($id);
+        $post = $this->scopedPosts()->findOrFail($id);
 
         abort_unless(
             $post->canBeEditedBy(auth()->user()),
@@ -223,12 +244,7 @@ class PostController extends Controller
 
     protected function findDeletablePost($id): Post
     {
-        $query = Post::query();
-        if (!auth()->user()->isAdmin()) {
-            $query->where('user_id', auth()->id());
-        }
-
-        $post = $query->findOrFail($id);
+        $post = $this->scopedPosts()->findOrFail($id);
 
         abort_unless(
             $post->canBeDeletedBy(auth()->user()),
@@ -247,11 +263,7 @@ class PostController extends Controller
         $wizardMedia = null;
 
         if (! $target && ! empty($wizardState['selected_media_id'])) {
-            $mediaQuery = MediaAsset::query();
-            if (! auth()->user()->isAdmin()) {
-                $mediaQuery->where('user_id', auth()->id());
-            }
-            $wizardMedia = $mediaQuery->find($wizardState['selected_media_id']);
+            $wizardMedia = $this->scopedMedia()->find($wizardState['selected_media_id']);
         }
 
         return [
@@ -275,10 +287,8 @@ class PostController extends Controller
 
     protected function validateAccount(int $accountId): SocialAccount
     {
-        $adminIds = User::role('admin')->pluck('id');
-
         return SocialAccount::query()
-            ->whereIn('user_id', $adminIds)
+            ->forCurrentOrganization()
             ->where('status', 'active')
             ->findOrFail($accountId);
     }
@@ -314,11 +324,13 @@ class PostController extends Controller
 
     protected function validateDestination(int $destinationId): SocialDestination
     {
-        $destination = SocialDestination::findOrFail($destinationId);
-        $adminIds = User::role('admin')->pluck('id');
+        $destination = SocialDestination::query()
+            ->forCurrentOrganization()
+            ->findOrFail($destinationId);
 
         abort_unless(
-            SocialAccount::whereIn('user_id', $adminIds)
+            SocialAccount::query()
+                ->forCurrentOrganization()
                 ->where('id', $destination->social_account_id)
                 ->exists(),
             403,
@@ -373,7 +385,7 @@ class PostController extends Controller
 
         $this->postMediaArchive->replaceFromLibrary(
             $target,
-            MediaAsset::findOrFail($mediaAssetId)
+            $this->scopedMedia()->findOrFail($mediaAssetId)
         );
     }
 
@@ -385,11 +397,7 @@ class PostController extends Controller
             'preset_key' => 'nullable|string',
         ]);
 
-        $query = MediaAsset::orderBy('created_at', 'desc');
-
-        if (!auth()->user()->isAdmin()) {
-            $query->where('user_id', auth()->id());
-        }
+        $query = $this->scopedMedia()->orderBy('created_at', 'desc');
 
         $query->where('channels', 'like', '%"' . $request->channel . '"%')
             ->where('media_type', $request->media_type);
@@ -471,6 +479,7 @@ class PostController extends Controller
                     'warning',
                     route('posts.index', ['status' => 'pending_approval']),
                     ['post_id' => $post->id, 'author_id' => $user->id],
+                    $post->organization_id,
                 );
             } catch (\Throwable $e) {
                 report($e);
@@ -547,13 +556,14 @@ class PostController extends Controller
         } else {
             $target = PostTarget::create(array_merge($targetData, [
                 'post_id' => $post->id,
+                'organization_id' => $post->organization_id,
                 'status' => $targetStatus,
             ]));
 
             if ($request->filled('selectedMediaId')) {
                 $this->postMediaArchive->copyFromLibrary(
                     $target,
-                    MediaAsset::findOrFail((int) $request->selectedMediaId)
+                    $this->scopedMedia()->findOrFail((int) $request->selectedMediaId)
                 );
             }
         }
@@ -574,6 +584,7 @@ class PostController extends Controller
                     'warning',
                     route('posts.index', ['status' => 'pending_approval']),
                     ['post_id' => $post->id, 'author_id' => $user->id],
+                    $post->organization_id,
                 );
             } catch (\Throwable $e) {
                 report($e);
@@ -591,6 +602,12 @@ class PostController extends Controller
 
     public function suggestCaption(Request $request)
     {
+        if (! $this->currentOrganization()->ai_enabled) {
+            return response()->json([
+                'message' => 'AI Mode is off for your firm. An owner or admin can enable it in Firm Settings.',
+            ], 403);
+        }
+
         $request->validate([
             'brief' => 'required|string|min:5|max:2000',
             'platform' => 'nullable|string|in:facebook,instagram,pinterest',
@@ -616,7 +633,7 @@ class PostController extends Controller
     {
         abort_unless(auth()->user()->isAdmin(), 403);
 
-        $post = Post::findOrFail($id);
+        $post = Post::query()->forCurrentOrganization()->findOrFail($id);
         abort_unless(
             $post->status === PostStatus::PENDING_APPROVAL,
             422,
@@ -641,11 +658,14 @@ class PostController extends Controller
 
     public function retryTarget($id)
     {
-        $target = PostTarget::whereHas('post', function ($q) {
-            if (!auth()->user()->isAdmin()) {
-                $q->where('user_id', auth()->id());
-            }
-        })->findOrFail($id);
+        $target = PostTarget::query()
+            ->forCurrentOrganization()
+            ->whereHas('post', function ($q) {
+                $q->forCurrentOrganization();
+                if (! auth()->user()->isAdmin()) {
+                    $q->where('user_id', auth()->id());
+                }
+            })->findOrFail($id);
 
         abort_unless($target->status === PostStatus::FAILED, 422, 'Only failed posts can be retried.');
 
@@ -683,7 +703,7 @@ class PostController extends Controller
     {
         abort_unless(auth()->user()->isAdmin(), 403);
 
-        $post = Post::with('targets')->findOrFail($id);
+        $post = Post::with('targets')->forCurrentOrganization()->findOrFail($id);
         abort_unless($post->status === PostStatus::APPROVED, 422, 'Only queued posts can be published now.');
 
         $target = $post->targets()->where('status', PostStatus::SCHEDULED)->first();
@@ -710,11 +730,14 @@ class PostController extends Controller
 
     public function cancelTarget($id)
     {
-        $target = PostTarget::whereHas('post', function ($q) {
-            if (!auth()->user()->isAdmin()) {
-                $q->where('user_id', auth()->id());
-            }
-        })->findOrFail($id);
+        $target = PostTarget::query()
+            ->forCurrentOrganization()
+            ->whereHas('post', function ($q) {
+                $q->forCurrentOrganization();
+                if (! auth()->user()->isAdmin()) {
+                    $q->where('user_id', auth()->id());
+                }
+            })->findOrFail($id);
 
         $target->update(['status' => PostStatus::CANCELLED]);
 
@@ -749,12 +772,14 @@ class PostController extends Controller
         $startOfCalendar = $currentMonthDate->copy()->startOfMonth()->startOfWeek(Carbon::SUNDAY);
         $endOfCalendar = $currentMonthDate->copy()->endOfMonth()->endOfWeek(Carbon::SATURDAY);
 
-        $targetsQuery = PostTarget::with(['post', 'socialDestination']);
-        if (! auth()->user()->isAdmin()) {
-            $targetsQuery->whereHas('post', function ($q) {
-                $q->where('user_id', auth()->id());
+        $targetsQuery = PostTarget::with(['post', 'socialDestination'])
+            ->forCurrentOrganization()
+            ->whereHas('post', function ($q) {
+                $q->forCurrentOrganization();
+                if (! auth()->user()->isAdmin()) {
+                    $q->where('user_id', auth()->id());
+                }
             });
-        }
 
         // Include scheduled posts AND publish-now posts (scheduled_at is often null).
         $targets = $targetsQuery
@@ -785,12 +810,14 @@ class PostController extends Controller
 
         $selectedTarget = null;
         if ($request->query('selected_target')) {
-            $stQuery = PostTarget::with(['post', 'socialDestination', 'mediaAsset']);
-            if (! auth()->user()->isAdmin()) {
-                $stQuery->whereHas('post', function ($q) {
-                    $q->where('user_id', auth()->id());
+            $stQuery = PostTarget::with(['post', 'socialDestination', 'mediaAsset'])
+                ->forCurrentOrganization()
+                ->whereHas('post', function ($q) {
+                    $q->forCurrentOrganization();
+                    if (! auth()->user()->isAdmin()) {
+                        $q->where('user_id', auth()->id());
+                    }
                 });
-            }
             $selectedTarget = $stQuery->find($request->query('selected_target'));
         }
 

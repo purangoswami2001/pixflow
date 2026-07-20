@@ -25,8 +25,11 @@ class RunAutomationCampaignJob implements ShouldQueue
             return;
         }
 
-        $campaign = AutomationCampaign::with('category')->find($this->campaignId);
-        if (! $campaign || ! $campaign->is_active) {
+        $campaign = AutomationCampaign::with(['category', 'organization'])->find($this->campaignId);
+        if (! $campaign
+            || ! $campaign->is_active
+            || ! $campaign->organization?->ai_enabled
+            || ! $campaign->organization?->automation_enabled) {
             return;
         }
 

@@ -103,6 +103,7 @@ class AutomationPlannerService
     public function createRun(AutomationCampaign $campaign, array $plan): AutomationRun
     {
         $run = AutomationRun::create([
+            'organization_id' => $campaign->organization_id,
             'automation_campaign_id' => $campaign->id,
             'status' => 'running',
             'planned_count' => count($plan),
@@ -119,6 +120,7 @@ class AutomationPlannerService
             }
 
             AutomationRunItem::create([
+                'organization_id' => $campaign->organization_id,
                 'automation_run_id' => $run->id,
                 'content_topic_id' => $topic?->id,
                 'platform' => $slot['platform'],

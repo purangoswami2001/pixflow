@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Models\MediaAsset;
 use App\Services\Media\ImageMetadataService;
 use App\Services\Media\MediaConfigService;
@@ -14,18 +15,27 @@ use Illuminate\Validation\ValidationException;
 
 class MediaAssetController extends Controller
 {
+    use ResolvesOrganization;
+
     public function __construct(
         protected MediaConfigService $mediaConfig,
         protected ImageMetadataService $imageMetadata,
     ) {}
 
-    public function index(Request $request)
+    protected function scopedMedia()
     {
-        $query = MediaAsset::orderBy('created_at', 'desc');
+        $query = MediaAsset::query()->forCurrentOrganization();
 
-        if (!auth()->user()->isAdmin()) {
+        if (! auth()->user()->isAdmin()) {
             $query->where('user_id', auth()->id());
         }
+
+        return $query;
+    }
+
+    public function index(Request $request)
+    {
+        $query = $this->scopedMedia()->orderBy('created_at', 'desc');
 
         if ($request->filled('channel')) {
             $query->where('channels', 'like', '%"' . $request->channel . '"%');
@@ -45,11 +55,9 @@ class MediaAssetController extends Controller
 
         $selectedAsset = null;
         if ($request->filled('selected_asset')) {
-            $selectedQuery = MediaAsset::with('user');
-            if (! auth()->user()->isAdmin()) {
-                $selectedQuery->where('user_id', auth()->id());
-            }
-            $selectedAsset = $selectedQuery->find($request->selected_asset);
+            $selectedAsset = $this->scopedMedia()
+                ->with('user')
+                ->find($request->selected_asset);
         }
 
         return view('media.index', [
@@ -189,6 +197,7 @@ class MediaAssetController extends Controller
             }
 
             MediaAsset::create([
+                'organization_id' => $this->currentOrganizationId(),
                 'user_id' => auth()->id(),
                 'file_path' => $path,
                 'disk' => 'public',
@@ -218,11 +227,7 @@ class MediaAssetController extends Controller
 
     public function saveMetadata(Request $request, $id)
     {
-        $query = MediaAsset::query();
-        if (!auth()->user()->isAdmin()) {
-            $query->where('user_id', auth()->id());
-        }
-        $asset = $query->findOrFail($id);
+        $asset = $this->scopedMedia()->findOrFail($id);
 
         $request->validate([
             'alt_text' => 'nullable|string|max:250',
@@ -242,11 +247,7 @@ class MediaAssetController extends Controller
 
     public function delete($id)
     {
-        $query = MediaAsset::query();
-        if (!auth()->user()->isAdmin()) {
-            $query->where('user_id', auth()->id());
-        }
-        $asset = $query->findOrFail($id);
+        $asset = $this->scopedMedia()->findOrFail($id);
 
         if (Storage::disk($asset->disk)->exists($asset->file_path)) {
             Storage::disk($asset->disk)->delete($asset->file_path);

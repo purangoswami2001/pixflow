@@ -1,5 +1,6 @@
 <x-app-layout>
     @php
+        $report = \App\Support\AiDiagnostics::forDisplay($report);
         $decision = $report['decision'] ?? '—';
         $badge = match ($decision) {
             'approve' => 'pp-status-badge--success',
@@ -227,11 +228,13 @@
                                 <p class="text-xs text-[#004ac6]">{{ collect($post->hashtags)->map(fn ($h) => str_starts_with($h, '#') ? $h : '#'.$h)->implode(' ') }}</p>
                             </div>
                         @endif
-                        <div class="text-xs text-[#737686] pt-2 border-t border-[#e8eaf5]">
-                            Provider: {{ $report['provider'] ?? '—' }}
-                            · Agent: {{ $report['agent'] ?? 'AutoReviewAgent' }}
-                            · by {{ $report['reviewed_by'] ?? 'auto-review-agent' }}
-                        </div>
+                        @if(\App\Support\AiDiagnostics::visible())
+                            <div class="text-xs text-[#737686] pt-2 border-t border-[#e8eaf5]">
+                                Provider: {{ $report['provider'] ?? '—' }}
+                                · Agent: {{ $report['agent'] ?? 'AutoReviewAgent' }}
+                                · by {{ $report['reviewed_by'] ?? 'auto-review-agent' }}
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>

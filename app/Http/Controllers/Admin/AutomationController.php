@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateAutomatedPostJob;
 use App\Jobs\RunAutomationCampaignJob;
@@ -12,9 +13,8 @@ use App\Models\ContentCategory;
 use App\Models\ContentTopic;
 use App\Models\PromptTemplate;
 use App\Models\SocialAccount;
-use App\Models\User;
 use App\Services\Automation\AutomationLogReader;
-use App\Services\Automation\AutomationMediaService;
+use App\Services\Automation\AutomationInitializer;
 use App\Services\Automation\ContentLibraryGeneratorService;
 use App\Support\AutomationCampaignPresets;
 use App\Support\AutomationImageStyles;
@@ -29,10 +29,22 @@ use Illuminate\Support\Str;
 
 class AutomationController extends Controller
 {
+    use ResolvesOrganization;
+
     public function index()
     {
-        $campaigns = AutomationCampaign::with('category')->orderByDesc('updated_at')->get();
-        $recentRuns = AutomationRun::with('campaign')
+        $organization = $this->currentOrganization();
+        $aiModeEnabled = (bool) $organization->ai_enabled;
+        $automationEnabled = $aiModeEnabled && (bool) $organization->automation_enabled;
+
+        $campaigns = AutomationCampaign::query()
+            ->forCurrentOrganization()
+            ->with('category')
+            ->orderByDesc('updated_at')
+            ->get();
+        $recentRuns = AutomationRun::query()
+            ->forCurrentOrganization()
+            ->with('campaign')
             ->withCount([
                 'items as live_failed_count' => fn ($q) => $q->where('status', 'failed'),
                 'items as live_created_count' => fn ($q) => $q->where('status', 'post_created'),
@@ -48,21 +60,52 @@ class AutomationController extends Controller
             }
         });
         $stats = [
-            'categories' => ContentCategory::where('is_active', true)->count(),
-            'topics' => ContentTopic::where('is_active', true)->count(),
+            'categories' => ContentCategory::query()->forCurrentOrganization()->where('is_active', true)->count(),
+            'topics' => ContentTopic::query()
+                ->whereHas('category', fn ($q) => $q->forCurrentOrganization())
+                ->where('is_active', true)
+                ->count(),
             'campaigns_active' => $campaigns->where('is_active', true)->count(),
             'campaigns_total' => $campaigns->count(),
-            'runs_today' => AutomationRun::whereDate('created_at', today())->count(),
-            'failed_recent' => AutomationRunItem::where('status', 'failed')->where('updated_at', '>=', now()->subDays(7))->count(),
+            'runs_today' => AutomationRun::query()->forCurrentOrganization()->whereDate('created_at', today())->count(),
+            'failed_recent' => AutomationRunItem::query()->forCurrentOrganization()->where('status', 'failed')->where('updated_at', '>=', now()->subDays(7))->count(),
         ];
 
-        return view('admin.automation.index', compact('campaigns', 'recentRuns', 'stats'));
+        return view('admin.automation.index', compact(
+            'campaigns',
+            'recentRuns',
+            'stats',
+            'automationEnabled',
+            'aiModeEnabled',
+            'organization',
+        ));
+    }
+
+    public function enable(AutomationInitializer $initializer)
+    {
+        $organization = $this->currentOrganization();
+
+        if (! $organization->ai_enabled) {
+            return redirect()
+                ->route('admin.settings')
+                ->with('error', 'Enable AI Mode in Firm Settings before turning on automation.');
+        }
+
+        if (! $organization->automation_enabled || ! $organization->automation_initialized_at) {
+            $initializer->initialize($organization);
+        }
+
+        return redirect()
+            ->route('admin.automation.index')
+            ->with('status', 'AI automation is ready. Default prompts and content topics were added for your firm.');
     }
 
     public function categories(Request $request)
     {
         $perPage = PerPage::resolve($request, 10);
-        $categories = ContentCategory::withCount('topics')
+        $categories = ContentCategory::query()
+            ->forCurrentOrganization()
+            ->withCount('topics')
             ->orderBy('sort_order')
             ->paginate($perPage)
             ->withQueryString();
@@ -92,6 +135,7 @@ class AutomationController extends Controller
 
         ContentCategory::create([
             ...$data,
+            'organization_id' => $this->currentOrganizationId(),
             'slug' => Str::slug($data['name']) . '-' . Str::random(4),
             'is_active' => $request->boolean('is_active', true),
         ]);
@@ -142,6 +186,8 @@ class AutomationController extends Controller
 
     public function updateCategory(Request $request, ContentCategory $category)
     {
+        $this->ensureOrgCategory($category);
+
         $data = $request->validate([
             'name' => 'required|string|max:120',
             'niche_prompt' => 'nullable|string',
@@ -160,6 +206,8 @@ class AutomationController extends Controller
 
     public function topics(Request $request, ContentCategory $category)
     {
+        $this->ensureOrgCategory($category);
+
         $perPage = PerPage::resolve($request);
         $topics = $category->topics()
             ->orderByDesc('id')
@@ -171,6 +219,8 @@ class AutomationController extends Controller
 
     public function storeTopic(Request $request, ContentCategory $category)
     {
+        $this->ensureOrgCategory($category);
+
         $data = $request->validate([
             'title' => 'required|string|max:500',
             'topic_type' => 'required|in:educational,promotional,listicle,tip',
@@ -191,6 +241,8 @@ class AutomationController extends Controller
 
     public function bulkTopics(Request $request, ContentCategory $category)
     {
+        $this->ensureOrgCategory($category);
+
         $request->validate([
             'titles' => 'required|string',
             'topic_type' => 'nullable|in:educational,promotional,listicle,tip',
@@ -218,6 +270,9 @@ class AutomationController extends Controller
 
     public function deleteTopic(ContentTopic $topic)
     {
+        $topic->loadMissing('category');
+        abort_unless((int) $topic->category?->organization_id === $this->currentOrganizationId(), 404);
+
         $topic->delete();
 
         return back()->with('status', 'Topic removed.');
@@ -225,6 +280,9 @@ class AutomationController extends Controller
 
     public function updateTopic(Request $request, ContentTopic $topic)
     {
+        $topic->loadMissing('category');
+        abort_unless((int) $topic->category?->organization_id === $this->currentOrganizationId(), 404);
+
         $data = $request->validate([
             'title' => 'required|string|max:500',
             'topic_type' => 'required|in:educational,promotional,listicle,tip',
@@ -251,11 +309,17 @@ class AutomationController extends Controller
 
     public function prompts()
     {
-        $templates = PromptTemplate::orderBy('platform')->orderBy('step')->get();
+        $templates = PromptTemplate::query()
+            ->forCurrentOrganization()
+            ->orderBy('platform')
+            ->orderBy('step')
+            ->get();
         $schemas = AutomationPromptSchema::steps();
         $placeholders = AutomationPromptSchema::placeholders();
         $metaPrompt = AutomationPromptSchema::metaPrompt();
-        $promptBundleJson = AutomationPromptBundle::exportJson();
+        $promptBundleJson = AutomationPromptBundle::exportJson(
+            organizationId: $this->currentOrganizationId(),
+        );
 
         return view('admin.automation.prompts', compact('templates', 'schemas', 'placeholders', 'metaPrompt', 'promptBundleJson'));
     }
@@ -266,7 +330,10 @@ class AutomationController extends Controller
             'prompt_bundle' => 'required|string',
         ]);
 
-        $result = AutomationPromptBundle::import($request->input('prompt_bundle'));
+        $result = AutomationPromptBundle::import(
+            $request->input('prompt_bundle'),
+            $this->currentOrganizationId(),
+        );
 
         if ($result['updated'] === 0 && $result['errors'] !== []) {
             return back()
@@ -284,6 +351,8 @@ class AutomationController extends Controller
 
     public function updatePrompt(Request $request, PromptTemplate $template)
     {
+        abort_unless((int) $template->organization_id === $this->currentOrganizationId(), 404);
+
         $data = $request->validate([
             'template' => 'required|string',
             'is_active' => 'nullable|boolean',
@@ -300,7 +369,9 @@ class AutomationController extends Controller
     public function campaigns(Request $request)
     {
         $perPage = PerPage::resolve($request);
-        $campaigns = AutomationCampaign::with('category')
+        $campaigns = AutomationCampaign::query()
+            ->forCurrentOrganization()
+            ->with('category')
             ->withCount('runs')
             ->orderByDesc('id')
             ->paginate($perPage)
@@ -319,6 +390,8 @@ class AutomationController extends Controller
 
     public function editCampaign(AutomationCampaign $campaign)
     {
+        abort_unless((int) $campaign->organization_id === $this->currentOrganizationId(), 404);
+
         return view('admin.automation.campaign-form', array_merge(
             $this->campaignFormData($campaign),
             ['campaign' => $campaign]
@@ -331,8 +404,15 @@ class AutomationController extends Controller
     protected function campaignFormData(?AutomationCampaign $campaign = null): array
     {
         return [
-            'categories' => ContentCategory::where('is_active', true)->orderBy('name')->get(),
-            'accounts' => SocialAccount::whereIn('user_id', User::role('admin')->pluck('id'))->where('status', 'active')->get(),
+            'categories' => ContentCategory::query()
+                ->forCurrentOrganization()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(),
+            'accounts' => SocialAccount::query()
+                ->forCurrentOrganization()
+                ->where('status', 'active')
+                ->get(),
             'timezones' => ScheduleTimezones::options(),
             'channelImagePresets' => AutomationCampaignPresets::optionsByPlatform(),
             'channelImageStyles' => AutomationImageStyles::options(),
@@ -343,7 +423,7 @@ class AutomationController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:120',
-            'content_category_id' => 'required|exists:content_categories,id',
+            'content_category_id' => 'required|exists:content_categories,id,organization_id,'.$this->currentOrganizationId(),
             'posts_per_day' => 'required|integer|min:1|max:20',
             'promotional_ratio' => 'required|integer|min:0|max:100',
             'default_timezone' => 'required|string|in:'.implode(',', array_keys(ScheduleTimezones::options())),
@@ -367,6 +447,7 @@ class AutomationController extends Controller
         );
 
         AutomationCampaign::create([
+            'organization_id' => $this->currentOrganizationId(),
             'name' => $data['name'],
             'content_category_id' => $data['content_category_id'],
             'posts_per_day' => $data['posts_per_day'],
@@ -383,16 +464,16 @@ class AutomationController extends Controller
             'next_run_at' => now(),
         ]);
 
-        AutomationMediaService::aiAgentUser();
-
         return redirect()->route('admin.automation.campaigns')->with('status', 'Automation campaign created.');
     }
 
     public function updateCampaign(Request $request, AutomationCampaign $campaign)
     {
+        abort_unless((int) $campaign->organization_id === $this->currentOrganizationId(), 404);
+
         $data = $request->validate([
             'name' => 'required|string|max:120',
-            'content_category_id' => 'required|exists:content_categories,id',
+            'content_category_id' => 'required|exists:content_categories,id,organization_id,'.$this->currentOrganizationId(),
             'posts_per_day' => 'required|integer|min:1|max:20',
             'promotional_ratio' => 'required|integer|min:0|max:100',
             'default_timezone' => 'required|string|in:'.implode(',', array_keys(ScheduleTimezones::options())),
@@ -435,6 +516,8 @@ class AutomationController extends Controller
 
     public function runCampaign(AutomationCampaign $campaign)
     {
+        abort_unless((int) $campaign->organization_id === $this->currentOrganizationId(), 404);
+
         RunAutomationCampaignJob::dispatch($campaign->id);
 
         return back()->with('status', 'Automation run queued. Ensure queue:work is running.');
@@ -443,7 +526,9 @@ class AutomationController extends Controller
     public function runs(Request $request)
     {
         $perPage = PerPage::resolve($request);
-        $runs = AutomationRun::with(['campaign', 'items.post'])
+        $runs = AutomationRun::query()
+            ->forCurrentOrganization()
+            ->with(['campaign', 'items.post'])
             ->withCount([
                 'items as live_failed_count' => fn ($q) => $q->where('status', 'failed'),
                 'items as live_created_count' => fn ($q) => $q->where('status', 'post_created'),
@@ -475,6 +560,8 @@ class AutomationController extends Controller
 
     public function showRun(AutomationRun $run)
     {
+        abort_unless((int) $run->organization_id === $this->currentOrganizationId(), 404);
+
         $run->load(['campaign', 'items.topic', 'items.post']);
         $run->syncCountsFromItems(finalize: $run->items->whereNotIn('status', ['post_created', 'failed'])->count() === 0);
         $run->refresh()->load(['campaign', 'items.topic', 'items.post']);
@@ -519,6 +606,8 @@ class AutomationController extends Controller
 
     public function runFeed(AutomationRun $run)
     {
+        abort_unless((int) $run->organization_id === $this->currentOrganizationId(), 404);
+
         $run->load(['campaign', 'items.topic', 'items.post']);
         $run->syncCountsFromItems(finalize: $run->items->whereNotIn('status', ['post_created', 'failed'])->count() === 0);
         $run->refresh()->load(['campaign', 'items.topic', 'items.post']);
@@ -568,6 +657,7 @@ class AutomationController extends Controller
 
     public function retryRunItem(AutomationRunItem $item)
     {
+        abort_unless((int) $item->organization_id === $this->currentOrganizationId(), 404);
         abort_unless($item->status === 'failed', 422, 'Only failed items can be retried.');
 
         $run = $item->run;
@@ -603,5 +693,10 @@ class AutomationController extends Controller
         GenerateAutomatedPostJob::dispatch($item->id, resume: true);
 
         return back()->with('status', 'Retry queued for '.$item->platform.' item — will resume from the last completed step.');
+    }
+
+    protected function ensureOrgCategory(ContentCategory $category): void
+    {
+        abort_unless((int) $category->organization_id === $this->currentOrganizationId(), 404);
     }
 }

@@ -2,14 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InAppNotification extends Model
 {
+    use BelongsToOrganization;
+
     protected $table = 'in_app_notifications';
 
     protected $fillable = [
+        'organization_id',
         'user_id',
         'type',
         'title',

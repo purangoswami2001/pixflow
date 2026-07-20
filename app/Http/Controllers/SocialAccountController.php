@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Models\SocialAccount;
 use App\Services\Social\SocialAccountManager;
 use App\Services\Social\PinterestApiClient;
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\Log;
 
 class SocialAccountController extends Controller
 {
+    use ResolvesOrganization;
+
     protected SocialAccountManager $manager;
 
     public function __construct(SocialAccountManager $manager)
@@ -21,11 +24,22 @@ class SocialAccountController extends Controller
         $this->manager = $manager;
     }
 
+    protected function scopedAccounts()
+    {
+        $query = SocialAccount::query()->forCurrentOrganization();
+
+        if (! auth()->user()->isAdmin()) {
+            $query->where('user_id', auth()->id());
+        }
+
+        return $query;
+    }
+
     public function index()
     {
-        $connectedAccounts = SocialAccount::with(['destinations'])
+        $connectedAccounts = $this->scopedAccounts()
+            ->with(['destinations'])
             ->connected()
-            ->where('user_id', auth()->id())
             ->orderBy('provider')
             ->get();
 
@@ -79,7 +93,7 @@ class SocialAccountController extends Controller
 
     public function sync($id)
     {
-        $account = SocialAccount::where('user_id', auth()->id())->findOrFail($id);
+        $account = $this->scopedAccounts()->findOrFail($id);
 
         if ($account->provider === ProviderType::PINTEREST) {
             return redirect()->route('accounts.pinterest.boards', $account->id);
@@ -155,7 +169,7 @@ class SocialAccountController extends Controller
 
     protected function findOwnedPinterestAccount($id): SocialAccount
     {
-        $account = SocialAccount::where('user_id', auth()->id())->findOrFail($id);
+        $account = $this->scopedAccounts()->findOrFail($id);
         abort_unless($account->provider === ProviderType::PINTEREST, 404);
 
         return $account;
@@ -163,7 +177,7 @@ class SocialAccountController extends Controller
 
     public function disconnect($id)
     {
-        $account = SocialAccount::where('user_id', auth()->id())->findOrFail($id);
+        $account = $this->scopedAccounts()->findOrFail($id);
         $this->manager->disconnect($account);
 
         return redirect()->route('accounts.index')
@@ -183,7 +197,11 @@ class SocialAccountController extends Controller
         $scopes = $oauth['scopes'];
 
         if (empty($clientId)) {
-            return redirect()->route('accounts.index')->with('error', "API credentials not configured for {$provider}. Set them in your .env file.");
+            $hint = config('app.debug')
+                ? "API credentials not configured for {$provider}. Set them in your .env file."
+                : ucfirst($provider).' connections are not available yet. Contact your platform administrator.';
+
+            return redirect()->route('accounts.index')->with('error', $hint);
         }
 
         $state = bin2hex(random_bytes(16));
@@ -376,6 +394,7 @@ class SocialAccountController extends Controller
 
             // Create/Update SocialAccount
             $account = SocialAccount::updateOrCreate([
+                'organization_id' => auth()->user()->current_organization_id,
                 'user_id' => auth()->id(),
                 'provider' => $providerType,
                 'provider_user_id' => $providerUserId,
@@ -419,7 +438,14 @@ class SocialAccountController extends Controller
                 $requestedScopes = SettingsService::oauthScopesFor($provider);
                 $notInRequest = array_values(array_diff($missingScopes, $requestedScopes));
 
-                if ($notInRequest !== []) {
+                if (! config('app.debug')) {
+                    $redirect->with(
+                        'warning',
+                        'Facebook is connected, but publishing permissions are missing. '
+                        . 'Disconnect and reconnect, approving all Page permissions in the Facebook dialog. '
+                        . 'If it persists, contact your platform administrator.'
+                    );
+                } elseif ($notInRequest !== []) {
                     $redirect->with(
                         'warning',
                         'Facebook is connected for listing Pages, but publishing is not configured yet. '

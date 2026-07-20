@@ -44,7 +44,7 @@
             'hashtags' => $post->hashtags ?? [],
             'admin_note' => $post->admin_note,
             'created_at' => $post->created_at->format('M d, Y g:i A'),
-            'author' => $post->user->name ?? 'Unknown',
+            'author' => $post->authorLabel(),
             'can_edit' => $canEdit,
             'can_delete' => $canDelete,
             'delete_url' => route('posts.delete', $post->id),

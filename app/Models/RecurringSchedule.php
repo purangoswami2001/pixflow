@@ -8,9 +8,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RecurringSchedule extends Model
 {
-    use HasFactory;
+    use Concerns\BelongsToOrganization, HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'post_id',
         'frequency',
         'days_of_week',

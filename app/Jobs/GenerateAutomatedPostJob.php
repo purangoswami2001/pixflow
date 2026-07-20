@@ -32,8 +32,11 @@ class GenerateAutomatedPostJob implements ShouldQueue
             return;
         }
 
-        $item = AutomationRunItem::with('run')->find($this->runItemId);
-        if (! $item || $item->status === 'post_created') {
+        $item = AutomationRunItem::with('run.campaign.organization')->find($this->runItemId);
+        if (! $item
+            || $item->status === 'post_created'
+            || ! $item->run?->campaign?->organization?->ai_enabled
+            || ! $item->run?->campaign?->organization?->automation_enabled) {
             return;
         }
 
@@ -63,6 +66,7 @@ class GenerateAutomatedPostJob implements ShouldQueue
                         'success',
                         route('admin.automation.runs.show', $item->automation_run_id),
                         ['run_id' => $item->automation_run_id, 'item_id' => $item->id, 'post_id' => $item->post_id],
+                        $item->organization_id,
                     );
                 } catch (\Throwable $e) {
                     report($e);
@@ -93,6 +97,7 @@ class GenerateAutomatedPostJob implements ShouldQueue
                     'danger',
                     route('admin.automation.runs.show', $item->automation_run_id),
                     ['run_id' => $item->automation_run_id, 'item_id' => $item->id, 'error' => $e->getMessage()],
+                    $item->organization_id,
                 );
             } catch (\Throwable $notifyError) {
                 report($notifyError);

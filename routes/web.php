@@ -6,6 +6,7 @@ use App\Http\Controllers\MediaAssetController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\SemiAiAssistController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,7 +20,17 @@ Route::get('/auth/{provider}/callback', [SocialAccountController::class, 'handle
     ->name('auth.callback')
     ->where('provider', 'facebook|instagram|pinterest');
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::get('/invitations/{token}', [OrganizationController::class, 'showInvitation'])
+    ->name('organizations.invitations.show');
+
+Route::middleware(['auth'])->group(function () {
+    Route::post('/invitations/{token}/accept', [OrganizationController::class, 'acceptInvitation'])
+        ->name('organizations.invitations.accept');
+});
+
+Route::middleware(['auth', 'verified', 'organization'])->group(function () {
+    Route::post('/organizations/{organization}/switch', [OrganizationController::class, 'switch'])
+        ->name('organizations.switch');
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -75,10 +86,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Admin Panel
     Route::middleware('admin')->group(function () {
+        Route::get('/admin/settings', [\App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('admin.settings');
+        Route::put('/admin/settings/ai', [\App\Http\Controllers\Admin\SettingsController::class, 'updateAi'])->name('admin.settings.ai');
+
         Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
         Route::post('/admin/users', [AdminController::class, 'storeUser'])->name('admin.users.store');
         Route::put('/admin/users/{id}', [AdminController::class, 'updateUser'])->name('admin.users.update');
         Route::delete('/admin/users/{id}', [AdminController::class, 'deleteUser'])->name('admin.delete-user');
+        Route::delete('/admin/invitations/{id}', [AdminController::class, 'revokeInvitation'])->name('admin.invitations.revoke');
         
         Route::get('/admin/schedule', [AdminController::class, 'schedule'])->name('admin.schedule');
         Route::get('/admin/schedule/queued-posts', [AdminController::class, 'queuedPostsForSchedule'])->name('admin.schedule.queued-posts');
@@ -96,8 +111,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/admin/posts/{id}/review', [PostController::class, 'review'])->name('posts.review');
         Route::post('/admin/posts/{id}/publish-now', [PostController::class, 'publishNow'])->name('posts.publish-now');
 
-        Route::prefix('admin/automation')->name('admin.automation.')->group(function () {
+        Route::prefix('admin/automation')->name('admin.automation.')->middleware('automation.enabled')->group(function () {
             Route::get('/', [\App\Http\Controllers\Admin\AutomationController::class, 'index'])->name('index');
+            Route::post('/enable', [\App\Http\Controllers\Admin\AutomationController::class, 'enable'])->name('enable');
             Route::get('/categories', [\App\Http\Controllers\Admin\AutomationController::class, 'categories'])->name('categories');
             Route::post('/categories', [\App\Http\Controllers\Admin\AutomationController::class, 'storeCategory'])->name('categories.store');
             Route::post('/categories/generate', [\App\Http\Controllers\Admin\AutomationController::class, 'generateCategoryBundle'])->name('categories.generate');

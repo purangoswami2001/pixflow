@@ -28,11 +28,17 @@ class AutoReviewPendingPosts extends Command
 
         $postId = $this->option('post');
         if ($postId) {
-            $post = Post::with(['targets.mediaAsset'])->find($postId);
+            $post = Post::with(['targets.mediaAsset', 'organization'])->find($postId);
             if (! $post) {
                 $this->error("Post #{$postId} not found.");
 
                 return self::FAILURE;
+            }
+
+            if (! $post->organization?->ai_enabled) {
+                $this->warn('AI Mode is disabled for this post\'s firm — skipping.');
+
+                return self::SUCCESS;
             }
 
             if (! $agent->isEligibleForAutoReview($post)) {
@@ -47,6 +53,7 @@ class AutoReviewPendingPosts extends Command
         $limit = max(1, (int) $this->option('limit'));
         $query = Post::query()
             ->with(['targets.mediaAsset'])
+            ->whereHas('organization', fn ($q) => $q->where('ai_enabled', true))
             ->where('status', PostStatus::PENDING_APPROVAL)
             ->where('metadata->source', 'automation')
             ->whereNotNull('metadata->run_id')

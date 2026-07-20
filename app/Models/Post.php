@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PostStatus;
+use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,9 +13,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Post extends Model
 {
-    use HasFactory, SoftDeletes;
+    use BelongsToOrganization, HasFactory, SoftDeletes;
 
     protected $fillable = [
+        'organization_id',
         'user_id',
         'title',
         'status',
@@ -47,9 +49,23 @@ class Post extends Model
         return $this->hasOne(RecurringSchedule::class);
     }
 
+    public function authorLabel(): string
+    {
+        if (($this->metadata['actor'] ?? null) === 'ai_agent'
+            || ($this->metadata['source'] ?? null) === 'automation') {
+            return (string) ($this->metadata['actor_label'] ?? 'AI Agent');
+        }
+
+        return $this->user?->name ?? 'Unknown';
+    }
+
     public function canBeEditedBy(User $user): bool
     {
         if (in_array($this->status, [PostStatus::PUBLISHED, PostStatus::PUBLISHING], true)) {
+            return false;
+        }
+
+        if (! $user->belongsToOrganization($this->organization_id)) {
             return false;
         }
 
@@ -67,6 +83,10 @@ class Post extends Model
 
     public function canBeDeletedBy(User $user): bool
     {
+        if (! $user->belongsToOrganization($this->organization_id)) {
+            return false;
+        }
+
         if ($user->isAdmin()) {
             return true;
         }

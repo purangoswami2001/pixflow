@@ -6,7 +6,6 @@ use App\Models\User;
 use App\Services\Media\ImageMetadataService;
 use App\Services\Media\MediaConfigService;
 use App\Services\Media\MediaTransformer;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -27,7 +26,8 @@ class AutomationMediaService
         string $localPath,
         string $platform,
         string $presetKey,
-        string $altText = ''
+        string $altText = '',
+        ?int $organizationId = null,
     ): \App\Models\MediaAsset {
         $preset = $this->mediaConfig->preset($presetKey);
         if (! $preset) {
@@ -56,7 +56,16 @@ class AutomationMediaService
         Storage::disk('public')->delete($staging);
         Storage::disk('local')->delete($localPath);
 
+        $organizationId = $organizationId
+            ?? $owner->current_organization_id
+            ?? app(\App\Support\OrganizationContext::class)->id();
+
+        if (! $organizationId) {
+            throw new \RuntimeException('Cannot create automation media without an organization.');
+        }
+
         return \App\Models\MediaAsset::create([
+            'organization_id' => $organizationId,
             'user_id' => $owner->id,
             'file_path' => $finalPath,
             'disk' => 'public',
@@ -72,6 +81,8 @@ class AutomationMediaService
             'channels' => [$platform],
             'metadata' => [
                 'source' => 'automation',
+                'actor' => 'ai_agent',
+                'actor_label' => 'AI Agent',
                 'creator_tool' => 'Canva',
             ],
         ]);
@@ -124,17 +135,4 @@ class AutomationMediaService
         ));
     }
 
-    public static function aiAgentUser(): User
-    {
-        $email = config('automation.ai_agent_email', 'ai-agent@pixflow.local');
-
-        return User::firstOrCreate(
-            ['email' => $email],
-            [
-                'name' => 'AI Agent',
-                'password' => Hash::make(Str::random(48)),
-                'email_verified_at' => now(),
-            ]
-        );
-    }
 }

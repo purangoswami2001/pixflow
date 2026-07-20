@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,9 +11,10 @@ use Illuminate\Support\Facades\Storage;
 
 class MediaAsset extends Model
 {
-    use HasFactory, SoftDeletes;
+    use BelongsToOrganization, HasFactory, SoftDeletes;
 
     protected $fillable = [
+        'organization_id',
         'user_id',
         'file_path',
         'disk',
@@ -39,6 +41,16 @@ class MediaAsset extends Model
         'height' => 'integer',
         'duration' => 'integer',
     ];
+
+    public function uploaderLabel(): string
+    {
+        if (($this->metadata['actor'] ?? null) === 'ai_agent'
+            || ($this->metadata['source'] ?? null) === 'automation') {
+            return (string) ($this->metadata['actor_label'] ?? 'AI Agent');
+        }
+
+        return $this->user?->name ?? 'Unknown';
+    }
 
     public function getPresetLabelAttribute(): ?string
     {

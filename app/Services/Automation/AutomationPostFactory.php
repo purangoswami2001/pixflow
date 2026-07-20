@@ -14,7 +14,8 @@ class AutomationPostFactory
 {
     public function __construct(
         protected PostSchedulerService $scheduler,
-        protected MediaConfigService $mediaConfig
+        protected MediaConfigService $mediaConfig,
+        protected AutomationActorResolver $actors,
     ) {
     }
 
@@ -24,7 +25,14 @@ class AutomationPostFactory
         int $mediaAssetId,
         int $socialAccountId
     ): \App\Models\Post {
-        $account = SocialAccount::with('destinations')->findOrFail($socialAccountId);
+        $organizationId = $item->organization_id
+            ?? $item->run?->organization_id
+            ?? $item->run?->campaign?->organization_id;
+
+        $account = SocialAccount::query()
+            ->with('destinations')
+            ->where('organization_id', $organizationId)
+            ->findOrFail($socialAccountId);
         $destination = $account->primaryDestination();
 
         if (! $destination) {
@@ -44,9 +52,11 @@ class AutomationPostFactory
 
         $caption = $copy['caption'];
 
-        $user = AutomationMediaService::aiAgentUser();
+        $user = $this->actors->forCampaign($item->run->campaign);
+        $organizationId ??= $account->organization_id;
 
         $post = $this->scheduler->createPost($user, [
+            'organization_id' => $organizationId,
             'title' => $copy['title'],
             'caption' => $caption,
             'is_draft' => false,
@@ -55,6 +65,8 @@ class AutomationPostFactory
             'tags' => ['ai-automation', $platform, $item->topic_type],
             'metadata' => [
                 'source' => 'automation',
+                'actor' => 'ai_agent',
+                'actor_label' => 'AI Agent',
                 'run_id' => $item->automation_run_id,
                 'run_item_id' => $item->id,
                 'topic_id' => $item->content_topic_id,
@@ -88,19 +100,26 @@ class AutomationPostFactory
     public function resolveAccountId(AutomationRunItem $item): int
     {
         $campaign = $item->run->campaign;
+        $organizationId = $campaign->organization_id;
         $accounts = $campaign->platform_accounts ?? [];
         $platform = $item->platform;
 
         if (isset($accounts[$platform])) {
             $id = is_array($accounts[$platform]) ? ($accounts[$platform][0] ?? null) : $accounts[$platform];
             if ($id) {
-                return (int) $id;
+                $account = SocialAccount::query()
+                    ->forOrganization((int) $organizationId)
+                    ->where('status', 'active')
+                    ->find((int) $id);
+
+                if ($account) {
+                    return $account->id;
+                }
             }
         }
 
-        $adminIds = \App\Models\User::role('admin')->pluck('id');
         $account = SocialAccount::query()
-            ->whereIn('user_id', $adminIds)
+            ->forOrganization((int) $organizationId)
             ->where('status', 'active')
             ->where('provider', ProviderType::from($platform))
             ->first();

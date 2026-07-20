@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
+            'organization' => \App\Http\Middleware\EnsureOrganization::class,
+            'automation.enabled' => \App\Http\Middleware\EnsureAutomationEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

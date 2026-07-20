@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\PostStatus;
+use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Models\Post;
 use App\Services\Posts\SemiAiAssistService;
 use App\Support\MediaUpload;
@@ -12,9 +13,22 @@ use Illuminate\Validation\ValidationException;
 
 class SemiAiAssistController extends Controller
 {
+    use ResolvesOrganization;
+
     public function __construct(
         protected SemiAiAssistService $assist,
     ) {}
+
+    protected function scopedPosts()
+    {
+        $query = Post::query()->forCurrentOrganization();
+
+        if (! auth()->user()->isAdmin()) {
+            $query->where('user_id', auth()->id());
+        }
+
+        return $query;
+    }
 
     public function saveDraftProgress(Request $request)
     {
@@ -50,11 +64,7 @@ class SemiAiAssistController extends Controller
 
         $post = null;
         if (! empty($data['draft_id'])) {
-            $postQuery = Post::query();
-            if (! auth()->user()->isAdmin()) {
-                $postQuery->where('user_id', auth()->id());
-            }
-            $post = $postQuery->findOrFail($data['draft_id']);
+            $post = $this->scopedPosts()->findOrFail($data['draft_id']);
 
             abort_unless(
                 $post->status === PostStatus::DRAFT
@@ -90,6 +100,7 @@ class SemiAiAssistController extends Controller
         } else {
             $post = Post::create(array_merge($postData, [
                 'user_id' => auth()->id(),
+                'organization_id' => $this->currentOrganizationId(),
             ]));
         }
 
@@ -242,6 +253,7 @@ class SemiAiAssistController extends Controller
                 $user->name ?: ('user-'.$user->id),
                 $user->id,
                 $extraTags,
+                $this->currentOrganizationId(),
             );
         } catch (ValidationException $e) {
             throw $e;
@@ -276,7 +288,9 @@ class SemiAiAssistController extends Controller
             'category_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('content_categories', 'id')->where(fn ($q) => $q->where('is_active', true)),
+                Rule::exists('content_categories', 'id')->where(fn ($q) => $q
+                    ->where('is_active', true)
+                    ->where('organization_id', $this->currentOrganizationId())),
             ],
             'custom_niche' => 'nullable|string|max:500',
             'custom_audience' => 'nullable|string|max:500',

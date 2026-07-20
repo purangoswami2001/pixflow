@@ -38,9 +38,18 @@ class AutoReviewPostJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $post = Post::with(['targets.mediaAsset', 'targets'])->find($this->postId);
+        $post = Post::with(['targets.mediaAsset', 'targets', 'organization'])->find($this->postId);
         if (! $post) {
             AutoReviewLogger::warning('Post not found for auto-review', ['post_id' => $this->postId]);
+
+            return;
+        }
+
+        if (! $post->organization?->ai_enabled) {
+            AutoReviewLogger::info('Job skipped — AI Mode disabled for firm', [
+                'post_id' => $this->postId,
+                'organization_id' => $post->organization_id,
+            ]);
 
             return;
         }
@@ -77,6 +86,7 @@ class AutoReviewPostJob implements ShouldBeUnique, ShouldQueue
                     'danger',
                     route('admin.automation.auto-review'),
                     ['post_id' => $this->postId, 'error' => $e->getMessage()],
+                    $post->organization_id,
                 );
             } catch (\Throwable $notifyError) {
                 report($notifyError);

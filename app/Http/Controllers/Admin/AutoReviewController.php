@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\PostStatus;
+use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Http\Controllers\Controller;
 use App\Jobs\AutoReviewPostJob;
 use App\Models\Post;
@@ -13,26 +14,24 @@ use Illuminate\Http\Request;
 
 class AutoReviewController extends Controller
 {
+    use ResolvesOrganization;
+
     public function index(Request $request, AutoReviewAgentService $agent)
     {
         $config = config('automation.auto_review', []);
         $enabled = $agent->enabled();
         $perPage = PerPage::resolve($request);
 
-        $pending = Post::query()
+        $pending = $this->automationPosts()
             ->with(['targets', 'user'])
             ->where('status', PostStatus::PENDING_APPROVAL)
-            ->where('metadata->source', 'automation')
-            ->whereNotNull('metadata->run_id')
             ->whereNotNull('metadata->run_item_id')
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'pending_page')
             ->withQueryString();
 
-        $reviewed = Post::query()
+        $reviewed = $this->automationPosts()
             ->with(['targets', 'user'])
-            ->where('metadata->source', 'automation')
-            ->whereNotNull('metadata->run_id')
             ->whereNotNull('metadata->auto_review->decision')
             ->where('metadata->auto_review->reviewed_by', 'auto-review-agent')
             ->orderByDesc('updated_at')
@@ -40,33 +39,26 @@ class AutoReviewController extends Controller
             ->withQueryString();
 
         $stats = [
-            'pending' => Post::query()
+            'pending' => $this->automationPosts()
                 ->where('status', PostStatus::PENDING_APPROVAL)
-                ->where('metadata->source', 'automation')
-                ->whereNotNull('metadata->run_id')
                 ->count(),
-            'approved_by_agent' => Post::query()
+            'approved_by_agent' => $this->automationPosts()
                 ->where('metadata->auto_review->reviewed_by', 'auto-review-agent')
                 ->where('metadata->auto_review->decision', 'approve')
-                ->where('metadata->source', 'automation')
                 ->where('updated_at', '>=', now()->subDays(30))
                 ->count(),
-            'revision_by_agent' => Post::query()
+            'revision_by_agent' => $this->automationPosts()
                 ->where('metadata->auto_review->reviewed_by', 'auto-review-agent')
                 ->where('metadata->auto_review->decision', 'revision')
-                ->where('metadata->source', 'automation')
                 ->where('updated_at', '>=', now()->subDays(30))
                 ->count(),
-            'rejected_by_agent' => Post::query()
+            'rejected_by_agent' => $this->automationPosts()
                 ->where('metadata->auto_review->reviewed_by', 'auto-review-agent')
                 ->where('metadata->auto_review->decision', 'reject')
-                ->where('metadata->source', 'automation')
                 ->where('updated_at', '>=', now()->subDays(30))
                 ->count(),
-            'unreviewed_pending' => Post::query()
+            'unreviewed_pending' => $this->automationPosts()
                 ->where('status', PostStatus::PENDING_APPROVAL)
-                ->where('metadata->source', 'automation')
-                ->whereNotNull('metadata->run_id')
                 ->whereNotNull('metadata->run_item_id')
                 ->where(function ($q) {
                     $q->whereNull('metadata->auto_review->decision')
@@ -87,7 +79,7 @@ class AutoReviewController extends Controller
 
     public function show(int $id)
     {
-        $post = Post::with(['targets.mediaAsset', 'targets.socialAccount', 'user'])->findOrFail($id);
+        $post = $this->findOrganizationAutomationPost($id);
         $report = $post->metadata['auto_review'] ?? null;
 
         if (! is_array($report) || empty($report['decision'])) {
@@ -117,10 +109,8 @@ class AutoReviewController extends Controller
         $limit = (int) ($data['limit'] ?? config('automation.auto_review.scan_limit', 20));
         $sync = ($data['mode'] ?? 'queue') === 'sync';
 
-        $posts = Post::query()
+        $posts = $this->automationPosts()
             ->where('status', PostStatus::PENDING_APPROVAL)
-            ->where('metadata->source', 'automation')
-            ->whereNotNull('metadata->run_id')
             ->whereNotNull('metadata->run_item_id')
             ->where(function ($q) {
                 $q->whereNull('metadata->auto_review->decision')
@@ -154,6 +144,7 @@ class AutoReviewController extends Controller
             'mode' => $sync ? 'sync' : 'queue',
             'count' => $processed,
             'admin_id' => auth()->id(),
+            'organization_id' => $this->currentOrganizationId(),
         ]);
 
         if ($sync) {
@@ -170,7 +161,7 @@ class AutoReviewController extends Controller
             return back()->withErrors(['auto_review' => 'Auto-review is disabled. Set AUTO_REVIEW_ENABLED=true in .env.']);
         }
 
-        $post = Post::with(['targets.mediaAsset'])->findOrFail($id);
+        $post = $this->findOrganizationAutomationPost($id, ['targets.mediaAsset']);
 
         if (! $agent->isEligibleForAutoReview($post)) {
             return back()->withErrors(['auto_review' => $agent->ineligibilityReason($post)]);
@@ -197,6 +188,7 @@ class AutoReviewController extends Controller
             AutoReviewLogger::info('Admin queued single review', [
                 'post_id' => $post->id,
                 'admin_id' => auth()->id(),
+                'organization_id' => $this->currentOrganizationId(),
             ]);
 
             return back()->with('status', "Queued AutoReview for post #{$post->id}.");
@@ -220,5 +212,23 @@ class AutoReviewController extends Controller
         $score = $result['report']['overall_score'] ?? '?';
 
         return back()->with('status', "Post #{$post->id} → {$result['decision']} (score {$score}).");
+    }
+
+    protected function automationPosts()
+    {
+        return Post::query()
+            ->forCurrentOrganization()
+            ->where('metadata->source', 'automation')
+            ->whereNotNull('metadata->run_id');
+    }
+
+    /**
+     * @param  list<string>  $with
+     */
+    protected function findOrganizationAutomationPost(int $id, array $with = ['targets.mediaAsset', 'targets.socialAccount', 'user']): Post
+    {
+        return $this->automationPosts()
+            ->with($with)
+            ->findOrFail($id);
     }
 }

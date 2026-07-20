@@ -1,17 +1,22 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement('ALTER TABLE social_accounts MODIFY access_token TEXT NULL');
+        Schema::table('social_accounts', function (Blueprint $table) {
+            $table->text('access_token')->nullable()->change();
+        });
     }
 
     public function down(): void
     {
-        DB::statement('ALTER TABLE social_accounts MODIFY access_token TEXT NOT NULL');
+        Schema::table('social_accounts', function (Blueprint $table) {
+            $table->text('access_token')->nullable(false)->change();
+        });
     }
 };

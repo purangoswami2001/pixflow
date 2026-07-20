@@ -24,7 +24,7 @@
                 <a href="{{ route('dashboard') }}" class="pp-btn-primary text-sm py-2 px-4">Open app</a>
             @else
                 <a href="{{ route('login') }}" class="hidden sm:inline text-sm font-semibold text-[#434655] hover:text-[#004ac6] transition">Sign in</a>
-                <a href="{{ route('login') }}" class="pp-btn-primary text-sm py-2 px-4">Get started</a>
+                <a href="{{ route('register') }}" class="pp-btn-primary text-sm py-2 px-4">Get started</a>
             @endauth
         </div>
     </header>
@@ -37,8 +37,8 @@
                 <p class="pp-landing-lede">
                     One workspace to plan, approve, and publish social content — with AI automation that keeps your channels moving.
                 </p>
-                <a href="{{ auth()->check() ? route('dashboard') : route('login') }}" class="pp-landing-cta">
-                    {{ auth()->check() ? 'Go to dashboard' : 'Start scheduling' }}
+                <a href="{{ auth()->check() ? route('dashboard') : route('register') }}" class="pp-landing-cta">
+                    {{ auth()->check() ? 'Go to dashboard' : 'Register your firm' }}
                     <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
                 </a>
             </div>

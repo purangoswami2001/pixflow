@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\OrganizationInvitation;
+use App\Services\Organizations\OrganizationService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -18,9 +18,20 @@ class RegisteredUserController extends Controller
     /**
      * Display the registration view.
      */
-    public function create(): View
+    public function create(Request $request): View
     {
-        return view('auth.register');
+        $invitation = null;
+
+        if ($request->filled('invitation')) {
+            $invitation = OrganizationInvitation::query()
+                ->with('organization')
+                ->where('token', $request->string('invitation'))
+                ->first();
+        }
+
+        return view('auth.register', [
+            'invitation' => $invitation?->isPending() ? $invitation : null,
+        ]);
     }
 
     /**
@@ -28,18 +39,24 @@ class RegisteredUserController extends Controller
      *
      * @throws ValidationException
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, OrganizationService $organizations): RedirectResponse
     {
+        $joiningViaInvitation = $request->filled('invitation_token');
+
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
+            'organization_name' => [$joiningViaInvitation ? 'nullable' : 'required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'invitation_token' => ['nullable', 'string'],
         ]);
 
-        $user = User::create([
+        $user = $organizations->registerFirm([
             'name' => $request->name,
             'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'password' => $request->password,
+            'organization_name' => $request->organization_name,
+            'invitation_token' => $request->invitation_token,
         ]);
 
         event(new Registered($user));

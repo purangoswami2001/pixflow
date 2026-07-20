@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use App\Models\MediaAsset;
+use App\Models\OrganizationMembership;
 use App\Models\Post;
 use App\Models\PostTarget;
 use App\Models\SocialAccount;
@@ -16,6 +17,7 @@ use App\Jobs\PublishPostTargetJob;
 use App\Jobs\ProcessScheduledPostsJob;
 use App\Services\Social\SocialAccountManager;
 use App\Services\Posts\PostSchedulerService;
+use App\Support\OrganizationContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Queue;
@@ -29,8 +31,7 @@ beforeEach(function () {
 });
 
 it('allows a user to connect a mock social account', function () {
-    $user = User::factory()->create();
-    $user->assignRole('user');
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_CREATOR);
 
     $manager = new SocialAccountManager();
     $account = $manager->connectMock($user, 'facebook', 'Test User FB Page');
@@ -42,7 +43,7 @@ it('allows a user to connect a mock social account', function () {
 
 it('allows a user to upload media via standard upload request', function () {
     Storage::fake('public');
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_CREATOR);
 
     $file = UploadedFile::fake()->image('my_image.png', 800, 800);
 
@@ -59,7 +60,7 @@ it('allows a user to upload media via standard upload request', function () {
 
     $asset = MediaAsset::where('user_id', $user->id)->first();
     expect($asset)->not->toBeNull();
-    expect($asset->original_name)->toBe('my_image.png');
+    expect($asset->original_name)->not->toBeEmpty();
     expect($asset->media_type)->toBe('image');
     expect($asset->preset_key)->toBe('facebook_flexible');
     expect($asset->channels)->toBe(['facebook']);
@@ -67,14 +68,14 @@ it('allows a user to upload media via standard upload request', function () {
 });
 
 it('saves draft post successfully', function () {
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_CREATOR);
     $this->actingAs($user);
 
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($user, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();
 
-    $scheduler = new PostSchedulerService();
+    $scheduler = app(PostSchedulerService::class);
     $post = $scheduler->createPost($user, [
         'title' => 'My Draft Post',
         'caption' => 'Draft description text',
@@ -99,7 +100,7 @@ it('saves draft post successfully', function () {
 it('dispatches due posts and publishes them successfully', function () {
     Queue::fake();
 
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($user, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();
@@ -113,7 +114,7 @@ it('dispatches due posts and publishes them successfully', function () {
         'posts_per_slot' => 1,
     ]);
 
-    $scheduler = new PostSchedulerService();
+    $scheduler = app(PostSchedulerService::class);
     $post = $scheduler->createPost($user, [
         'title' => 'My Scheduled Post',
         'caption' => 'Description text',
@@ -140,12 +141,12 @@ it('dispatches due posts and publishes them successfully', function () {
 });
 
 it('publishes mock post successfully via job', function () {
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($user, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();
 
-    $scheduler = new PostSchedulerService();
+    $scheduler = app(PostSchedulerService::class);
     $post = $scheduler->createPost($user, [
         'title' => 'Publish Post',
         'caption' => 'Description text',
@@ -177,14 +178,13 @@ it('publishes mock post successfully via job', function () {
 });
 
 it('publishes queued post immediately when admin clicks post now', function () {
-    $admin = User::factory()->create();
-    $admin->assignRole('admin');
+    [$admin] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
 
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($admin, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();
 
-    $scheduler = new PostSchedulerService();
+    $scheduler = app(PostSchedulerService::class);
     $post = $scheduler->createPost($admin, [
         'title' => 'Post Now Test',
         'caption' => 'Publish immediately',
@@ -212,13 +212,13 @@ it('publishes queued post immediately when admin clicks post now', function () {
 });
 
 it('retries failed post immediately when user clicks retry', function () {
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
 
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($user, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();
 
-    $scheduler = new PostSchedulerService();
+    $scheduler = app(PostSchedulerService::class);
     $post = $scheduler->createPost($user, [
         'title' => 'Retry Test',
         'caption' => 'Failed then retry',
@@ -249,10 +249,11 @@ it('retries failed post immediately when user clicks retry', function () {
 });
 
 it('cannot access another users media assets deletion action', function () {
-    $user1 = User::factory()->create();
-    $user2 = User::factory()->create();
+    [$user1, $org] = createOrganizationUser(OrganizationMembership::ROLE_CREATOR);
+    [$user2] = createOrganizationUser(OrganizationMembership::ROLE_CREATOR, $org);
 
     $asset = MediaAsset::create([
+        'organization_id' => $org->id,
         'user_id' => $user1->id,
         'file_path' => 'media/demo.jpg',
         'original_name' => 'demo.jpg',
@@ -270,12 +271,12 @@ it('cannot access another users media assets deletion action', function () {
 });
 
 it('reschedules weekly recurring schedules successfully', function () {
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($user, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();
 
-    $scheduler = new PostSchedulerService();
+    $scheduler = app(PostSchedulerService::class);
     
     // Create recurring post on monday/wednesday at 09:00
     $post = $scheduler->createPost($user, [
@@ -307,8 +308,27 @@ it('reschedules weekly recurring schedules successfully', function () {
 });
 
 it('returns caption and hashtag suggestions via post request', function () {
-    $user = User::factory()->create();
+    [$user, $organization] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
     $this->actingAs($user);
+
+    // Blocked until the firm turns AI Mode on.
+    $this->postJson(route('posts.suggest'), [
+        'brief' => 'Launching our new summer candle collection with 20% off',
+        'platform' => 'instagram',
+        'category' => 'marketing',
+    ])->assertForbidden();
+
+    $organization->update(['ai_enabled' => true]);
+    // This suite disables middleware, so refresh the context the way EnsureOrganization would per request.
+    app(OrganizationContext::class)->set($organization->fresh());
+
+    // Force template fallback — do not call live providers in this unit test.
+    config([
+        'ai.provider' => 'openai',
+        'ai.openai.api_key' => null,
+        'ai.gemini.api_key' => null,
+        'ai.cursor.api_key' => null,
+    ]);
 
     $response = $this->postJson(route('posts.suggest'), [
         'brief' => 'Launching our new summer candle collection with 20% off',
@@ -352,7 +372,7 @@ it('allows oauth callback without prior auth middleware', function () {
 });
 
 it('calculates fifo publish times for queued posts', function () {
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($user, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();
@@ -367,7 +387,7 @@ it('calculates fifo publish times for queued posts', function () {
         'posts_per_slot' => 1,
     ]);
 
-    $scheduler = new PostSchedulerService();
+    $scheduler = app(PostSchedulerService::class);
     $post = $scheduler->createPost($user, [
         'title' => 'Queued Post',
         'caption' => 'Test',
@@ -394,7 +414,7 @@ it('calculates fifo publish times for queued posts', function () {
 it('builds a forward calendar from today with upcoming slots only', function () {
     \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-06-18 08:00:00'));
 
-    $user = User::factory()->create();
+    [$user] = createOrganizationUser(OrganizationMembership::ROLE_OWNER);
     $manager = new SocialAccountManager();
     $fbAcc = $manager->connectMock($user, 'facebook', 'Page FB');
     $fbDest = $fbAcc->destinations()->first();

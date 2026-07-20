@@ -2,6 +2,70 @@
     <div class="pp-automation-page">
         @include('admin.automation._nav')
 
+        @if(!($aiModeEnabled ?? true))
+            <div class="pp-auto-hero">
+                <div class="pp-auto-hero-inner flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                    <div>
+                        <div class="pp-auto-hero-badge">
+                            <span class="material-symbols-outlined text-[14px]">smart_toy</span>
+                            AI Mode is off
+                        </div>
+                        <h1>Enable AI Mode to unlock automation</h1>
+                        <p>
+                            AI automation, content generation, and auto review require AI Mode.
+                            An owner or admin can turn it on from Firm Settings — Semi-AI Assist keeps working without it.
+                        </p>
+                        <div class="pp-auto-hero-actions">
+                            <a href="{{ route('admin.settings') }}" class="pp-btn-primary">
+                                <span class="material-symbols-outlined text-[18px]">tune</span>
+                                Open Firm Settings
+                            </a>
+                        </div>
+                    </div>
+                    <div class="pp-auto-metrics lg:!mb-0 lg:max-w-md shrink-0">
+                        <div class="pp-auto-metric pp-auto-metric--purple">
+                            <div class="pp-auto-metric-accent"></div>
+                            <div class="pp-auto-metric-icon"><span class="material-symbols-outlined">shield_lock</span></div>
+                            <p class="pp-auto-metric-label">Firm privacy</p>
+                            <p class="pp-auto-metric-value" style="font-size:1.15rem">Isolated</p>
+                            <p class="pp-auto-metric-sub">Prompts, topics, media, and posts stay in this firm.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @elseif(!$automationEnabled)
+            <div class="pp-auto-hero">
+                <div class="pp-auto-hero-inner flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                    <div>
+                        <div class="pp-auto-hero-badge">
+                            <span class="material-symbols-outlined text-[14px]">power_settings_new</span>
+                            Automation is off
+                        </div>
+                        <h1>Turn on AI automation for {{ $organization->name }}</h1>
+                        <p>
+                            This adds a private starter content library and platform prompts for this firm.
+                            Generated posts remain pending approval and are visible only to owners and administrators.
+                        </p>
+                        <form method="POST" action="{{ route('admin.automation.enable') }}" class="pp-auto-hero-actions">
+                            @csrf
+                            <button type="submit" class="pp-btn-primary">
+                                <span class="material-symbols-outlined text-[18px]">play_arrow</span>
+                                Turn on automation
+                            </button>
+                        </form>
+                    </div>
+                    <div class="pp-auto-metrics lg:!mb-0 lg:max-w-md shrink-0">
+                        <div class="pp-auto-metric pp-auto-metric--purple">
+                            <div class="pp-auto-metric-accent"></div>
+                            <div class="pp-auto-metric-icon"><span class="material-symbols-outlined">shield_lock</span></div>
+                            <p class="pp-auto-metric-label">Firm privacy</p>
+                            <p class="pp-auto-metric-value" style="font-size:1.15rem">Isolated</p>
+                            <p class="pp-auto-metric-sub">Prompts, topics, media, and posts stay in this firm.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @else
         <div class="pp-auto-hero">
             <div class="pp-auto-hero-inner flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                 <div>
@@ -30,9 +94,15 @@
                     <div class="pp-auto-metric pp-auto-metric--green">
                         <div class="pp-auto-metric-accent"></div>
                         <div class="pp-auto-metric-icon"><span class="material-symbols-outlined">bolt</span></div>
-                        <p class="pp-auto-metric-label">AI Provider</p>
-                        <p class="pp-auto-metric-value capitalize" style="font-size:1.25rem">{{ config('automation.ai_provider', 'gemini') }}</p>
-                        <p class="pp-auto-metric-sub">Image: {{ \App\Support\AutomationAiProvider::imageProviderName() }}</p>
+                        @if(config('app.debug'))
+                            <p class="pp-auto-metric-label">AI Provider</p>
+                            <p class="pp-auto-metric-value capitalize" style="font-size:1.25rem">{{ config('automation.ai_provider', 'gemini') }}</p>
+                            <p class="pp-auto-metric-sub">Image: {{ \App\Support\AutomationAiProvider::imageProviderName() }}</p>
+                        @else
+                            <p class="pp-auto-metric-label">AI Mode</p>
+                            <p class="pp-auto-metric-value" style="font-size:1.25rem">Active</p>
+                            <p class="pp-auto-metric-sub">Managed AI engine for this firm</p>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -170,5 +240,6 @@
                 </div>
             </div>
         </div>
+        @endif
     </div>
 </x-app-layout>

@@ -21,6 +21,9 @@ class RunDueAutomation extends Command
         }
 
         $campaigns = AutomationCampaign::query()
+            ->whereHas('organization', fn ($query) => $query
+                ->where('ai_enabled', true)
+                ->where('automation_enabled', true))
             ->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('next_run_at')

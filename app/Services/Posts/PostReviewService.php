@@ -118,6 +118,7 @@ class PostReviewService
                     $action === 'approve' ? 'success' : ($action === 'reject' ? 'danger' : 'warning'),
                     route('admin.automation.auto-review.show', $post->id),
                     ['post_id' => $post->id, 'decision' => $action],
+                    $post->organization_id,
                 );
             }
 

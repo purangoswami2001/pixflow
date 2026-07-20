@@ -16,6 +16,7 @@
         </x-slot>
     </x-pp-page-header>
 
+    @if(config('app.debug'))
     <div class="pp-accounts-env mb-4 sm:mb-5">
         <div class="pp-accounts-env-main">
             <span class="material-symbols-outlined">{{ $mockMode ? 'science' : 'cloud_done' }}</span>
@@ -35,8 +36,9 @@
             @endforeach
         </div>
     </div>
+    @endif
 
-    @if($platformSandboxes['pinterest'] ?? false)
+    @if(config('app.debug') && ($platformSandboxes['pinterest'] ?? false))
         <details class="pp-callout pp-callout--warning pp-callout--collapse mb-4 sm:mb-5">
             <summary>
                 <span class="material-symbols-outlined pp-callout-icon shrink-0">info</span>

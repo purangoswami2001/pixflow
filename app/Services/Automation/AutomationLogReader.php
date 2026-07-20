@@ -2,6 +2,7 @@
 
 namespace App\Services\Automation;
 
+use App\Support\AiDiagnostics;
 use Illuminate\Support\Facades\File;
 
 class AutomationLogReader
@@ -75,9 +76,9 @@ class AutomationLogReader
                 'hash' => $hash,
                 'at' => $m[1],
                 'level' => $m[3],
-                'message' => $m[4],
-                'context' => $context,
-                'raw' => $block,
+                'message' => AiDiagnostics::forDisplay($m[4]),
+                'context' => AiDiagnostics::forDisplay($context),
+                'raw' => AiDiagnostics::forDisplay($block),
             ];
         }
 

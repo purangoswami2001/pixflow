@@ -28,6 +28,9 @@
                 Log in
                 <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
             </button>
+            @if (Route::has('register'))
+                <a class="text-sm text-center text-[#004ac6] hover:underline" href="{{ route('register') }}">Register your firm</a>
+            @endif
             @if (Route::has('password.request'))
                 <a class="text-sm text-center text-[#004ac6] hover:underline" href="{{ route('password.request') }}">Forgot password?</a>
             @endif

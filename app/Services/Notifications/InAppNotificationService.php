@@ -3,7 +3,9 @@
 namespace App\Services\Notifications;
 
 use App\Models\InAppNotification;
+use App\Models\OrganizationMembership;
 use App\Models\User;
+use App\Support\OrganizationContext;
 use Illuminate\Support\Collection;
 
 class InAppNotificationService
@@ -39,11 +41,14 @@ class InAppNotificationService
         string $level = 'info',
         ?string $link = null,
         array $data = [],
+        ?int $organizationId = null,
     ): InAppNotification {
         $userId = $user instanceof User ? $user->id : $user;
+        $organizationId = $organizationId ?? app(OrganizationContext::class)->id();
 
         return InAppNotification::create([
             'user_id' => $userId,
+            'organization_id' => $organizationId,
             'type' => $type,
             'title' => $title,
             'body' => $body,
@@ -64,18 +69,40 @@ class InAppNotificationService
         string $level = 'info',
         ?string $link = null,
         array $data = [],
+        ?int $organizationId = null,
     ): Collection {
-        $admins = User::role('admin')->get(['id']);
+        $organizationId = $organizationId ?? app(OrganizationContext::class)->id();
 
-        return $admins->map(fn (User $admin) => $this->notifyUser(
-            $admin,
-            $type,
-            $title,
-            $body,
-            $level,
-            $link,
-            $data,
-        ));
+        if (! $organizationId) {
+            return collect();
+        }
+
+        $adminUserIds = OrganizationMembership::query()
+            ->where('organization_id', $organizationId)
+            ->where('status', OrganizationMembership::STATUS_ACTIVE)
+            ->whereIn('role', [
+                OrganizationMembership::ROLE_OWNER,
+                OrganizationMembership::ROLE_ADMIN,
+            ])
+            ->pluck('user_id');
+
+        if ($adminUserIds->isEmpty()) {
+            return collect();
+        }
+
+        return User::query()
+            ->whereIn('id', $adminUserIds)
+            ->get(['id'])
+            ->map(fn (User $admin) => $this->notifyUser(
+                $admin,
+                $type,
+                $title,
+                $body,
+                $level,
+                $link,
+                $data,
+                $organizationId,
+            ));
     }
 
     /**
@@ -90,9 +117,7 @@ class InAppNotificationService
 
     public function unreadCount(User $user): int
     {
-        return InAppNotification::query()
-            ->where('user_id', $user->id)
-            ->whereIn('type', $this->typesFor($user))
+        return $this->queryForUser($user)
             ->whereNull('read_at')
             ->count();
     }
@@ -102,9 +127,7 @@ class InAppNotificationService
      */
     public function recentFor(User $user, int $limit = 10): Collection
     {
-        return InAppNotification::query()
-            ->where('user_id', $user->id)
-            ->whereIn('type', $this->typesFor($user))
+        return $this->queryForUser($user)
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
@@ -112,20 +135,30 @@ class InAppNotificationService
 
     public function paginateFor(User $user, int $perPage = 30)
     {
-        return InAppNotification::query()
-            ->where('user_id', $user->id)
-            ->whereIn('type', $this->typesFor($user))
+        return $this->queryForUser($user)
             ->orderByDesc('id')
             ->paginate($perPage);
     }
 
     public function markAllRead(User $user): int
     {
-        return InAppNotification::query()
-            ->where('user_id', $user->id)
-            ->whereIn('type', $this->typesFor($user))
+        return $this->queryForUser($user)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
+    }
+
+    protected function queryForUser(User $user)
+    {
+        $query = InAppNotification::query()
+            ->where('user_id', $user->id)
+            ->whereIn('type', $this->typesFor($user));
+
+        $organizationId = app(OrganizationContext::class)->id() ?? $user->current_organization_id;
+        if ($organizationId) {
+            $query->where('organization_id', $organizationId);
+        }
+
+        return $query;
     }
 
     public function iconFor(string $type): string

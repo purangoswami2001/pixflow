@@ -306,8 +306,9 @@
                             <div>
                                 <div class="flex items-center justify-between mb-1">
                                     <label class="text-xs font-semibold text-[#737686] uppercase">Caption / description</label>
+                                    @php $aiUsable = ($aiConfigured ?? false) && ($aiModeEnabled ?? false); @endphp
                                     <div class="relative group" id="aiSuggestWrap">
-                                        @if($aiConfigured)
+                                        @if($aiUsable)
                                             <button type="button" id="aiSuggestBtn" onclick="toggleAiBriefPanel()" class="pp-btn-secondary text-xs py-1 px-2.5 flex items-center gap-1">
                                                 <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
                                                 Generate with AI
@@ -318,12 +319,18 @@
                                                 Generate with AI
                                             </button>
                                             <div class="pointer-events-none absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-[#c3c6d7] bg-[#131b2e] px-3 py-2 text-[11px] leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                                                Add an OpenAI or Gemini API key in your <code class="text-[#93c5fd]">.env</code> configuration to start generating with AI.
+                                                @if(! ($aiModeEnabled ?? false))
+                                                    AI Mode is off for your firm. An owner or admin can turn it on in Firm Settings. Semi-AI Assist stays available without it.
+                                                @elseif(config('app.debug'))
+                                                    Add an OpenAI or Gemini API key in your <code class="text-[#93c5fd]">.env</code> configuration to start generating with AI.
+                                                @else
+                                                    AI generation is not configured for this installation yet. Contact your platform administrator.
+                                                @endif
                                             </div>
                                         @endif
                                     </div>
                                 </div>
-                                @if($aiConfigured)
+                                @if($aiUsable)
                                 <div id="aiBriefPanel" class="hidden mb-3 rounded-xl border border-[#c3c6d7] bg-[#f2f3ff] p-4 space-y-3">
                                     <div>
                                         <label for="aiBriefInput" class="text-xs font-semibold text-[#434655] uppercase tracking-wide block mb-1">Describe your post</label>

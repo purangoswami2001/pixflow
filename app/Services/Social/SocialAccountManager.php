@@ -13,9 +13,16 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Services\SettingsService;
 use App\Services\Social\PinterestApiClient;
+use App\Support\OrganizationContext;
 
 class SocialAccountManager
 {
+    protected function resolveOrganizationId(User $user): int
+    {
+        return $user->current_organization_id
+            ?? app(OrganizationContext::class)->requireId();
+    }
+
     /**
      * Connect a mock social account for testing.
      */
@@ -23,14 +30,17 @@ class SocialAccountManager
     {
         $providerType = ProviderType::from($provider);
         $providerUserId = 'mock_usr_' . rand(1000, 9999);
+        $organizationId = $this->resolveOrganizationId($user);
 
         // Delete existing mock account of same provider to keep it clean
-        SocialAccount::where('user_id', $user->id)
+        SocialAccount::where('organization_id', $organizationId)
+            ->where('user_id', $user->id)
             ->where('provider', $providerType)
             ->where('provider_user_id', $providerUserId)
             ->delete();
 
         $account = SocialAccount::create([
+            'organization_id' => $organizationId,
             'user_id' => $user->id,
             'provider' => $providerType,
             'provider_user_id' => $providerUserId,
@@ -100,6 +110,7 @@ class SocialAccountManager
             };
 
             SocialDestination::create([
+                'organization_id' => $account->organization_id,
                 'social_account_id' => $account->id,
                 'provider' => $account->provider,
                 'destination_type' => $destinationType,
@@ -131,6 +142,7 @@ class SocialAccountManager
                     if ($page) {
                         SocialDestination::updateOrCreate(
                             [
+                                'organization_id' => $account->organization_id,
                                 'provider' => ProviderType::FACEBOOK,
                                 'provider_destination_id' => $page['id'],
                             ],
@@ -143,7 +155,8 @@ class SocialAccountManager
                                 'metadata' => ['access_token' => $page['access_token'] ?? null],
                             ]
                         );
-                        $destination = SocialDestination::where('provider', ProviderType::FACEBOOK)
+                        $destination = SocialDestination::where('organization_id', $account->organization_id)
+                            ->where('provider', ProviderType::FACEBOOK)
                             ->where('provider_destination_id', $page['id'])
                             ->first();
                         if ($destination) {
@@ -176,6 +189,7 @@ class SocialAccountManager
 
                         SocialDestination::updateOrCreate(
                             [
+                                'organization_id' => $account->organization_id,
                                 'provider' => ProviderType::INSTAGRAM,
                                 'provider_destination_id' => $ig['id'],
                             ],
@@ -188,7 +202,8 @@ class SocialAccountManager
                                 'metadata' => ['connected_page_id' => $page['id']],
                             ]
                         );
-                        $destination = SocialDestination::where('provider', ProviderType::INSTAGRAM)
+                        $destination = SocialDestination::where('organization_id', $account->organization_id)
+                            ->where('provider', ProviderType::INSTAGRAM)
                             ->where('provider_destination_id', $ig['id'])
                             ->first();
                         if ($destination) {
@@ -299,6 +314,7 @@ class SocialAccountManager
 
         $destination = SocialDestination::updateOrCreate(
             [
+                'organization_id' => $account->organization_id,
                 'provider' => ProviderType::PINTEREST,
                 'provider_destination_id' => $boardId,
             ],

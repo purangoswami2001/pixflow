@@ -3,18 +3,20 @@
 namespace Database\Seeders;
 
 use App\Models\PromptTemplate;
-use App\Services\Automation\AutomationMediaService;
 use Illuminate\Database\Seeder;
 
 class AutomationSeeder extends Seeder
 {
-    public function run(): void
+    public function run(?int $organizationId = null): void
     {
-        AutomationMediaService::aiAgentUser();
-        $this->seedPrompts();
+        $organizationId ??= \App\Models\Organization::query()->orderBy('id')->value('id');
+
+        if ($organizationId) {
+            $this->seedPrompts((int) $organizationId);
+        }
     }
 
-    public function seedPrompts(): void
+    public function seedPrompts(int $organizationId): void
     {
         $templates = [
             ['pinterest', 'idea', 'Pinterest Pin Idea Planner', $this->ideaPrompt('pinterest')],
@@ -30,7 +32,12 @@ class AutomationSeeder extends Seeder
 
         foreach ($templates as [$platform, $step, $name, $template]) {
             PromptTemplate::updateOrCreate(
-                ['platform' => $platform, 'step' => $step, 'name' => $name],
+                [
+                    'organization_id' => $organizationId,
+                    'platform' => $platform,
+                    'step' => $step,
+                    'name' => $name,
+                ],
                 ['template' => $template, 'is_default' => true, 'is_active' => true, 'version' => 2]
             );
         }

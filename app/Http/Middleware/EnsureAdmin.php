@@ -10,7 +10,7 @@ class EnsureAdmin
 {
     public function handle(Request $request, Closure $next): Response
     {
-        abort_unless($request->user()?->isAdmin(), 403);
+        abort_unless($request->user()?->isAdmin(), 403, 'Only firm owners and administrators can access this area.');
 
         return $next($request);
     }

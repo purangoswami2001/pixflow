@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProviderType;
 use App\Enums\SocialAccountStatus;
+use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,9 +12,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SocialAccount extends Model
 {
-    use HasFactory;
+    use BelongsToOrganization, HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'user_id',
         'provider',
         'provider_user_id',

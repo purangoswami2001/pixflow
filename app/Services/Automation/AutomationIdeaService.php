@@ -35,7 +35,7 @@ class AutomationIdeaService
             'topic_type' => $topicType,
             'platform' => $platform,
             'color_palette' => PlatformPromptGuardrails::colorPalette($niche, $audience),
-        ]);
+        ], $category->organization_id);
         $user .= "\n\n".PlatformPromptGuardrails::qualityFooter($platform, $topicType);
 
         $data = $this->text->generateJson($system, $user, AutomationAiProvider::textProviders());

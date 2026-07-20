@@ -4,8 +4,10 @@
 
 <div class="p-5 space-y-4 bg-white" data-live-section="details">
     @php
-        $retryCount = (int) ($item->metadata['retry_count'] ?? 0);
-        $previousErrors = is_array($item->metadata['previous_errors'] ?? null) ? $item->metadata['previous_errors'] : [];
+        $displayMetadata = \App\Support\AiDiagnostics::forDisplay($item->metadata ?? []);
+        $retryCount = (int) ($displayMetadata['retry_count'] ?? 0);
+        $previousErrors = is_array($displayMetadata['previous_errors'] ?? null) ? $displayMetadata['previous_errors'] : [];
+        $displayError = \App\Support\AiDiagnostics::forDisplay($item->error_message);
     @endphp
 
     @if($item->status === 'post_created' && $retryCount > 0)
@@ -20,10 +22,10 @@
         </div>
     @endif
 
-    @if($item->error_message)
+    @if($displayError)
         <div class="pp-automation-alert pp-automation-alert--danger">
             <span class="material-symbols-outlined text-[20px]">error</span>
-            <p class="text-sm font-medium">{{ $item->error_message }}</p>
+            <p class="text-sm font-medium">{{ $displayError }}</p>
         </div>
     @endif
 
@@ -44,22 +46,22 @@
         </details>
     @endif
 
-    @if(!empty($item->metadata['pipeline']))
+    @if(!empty($displayMetadata['pipeline']))
         <details class="pp-automation-log-panel">
             <summary>Pipeline artifacts (JSON)</summary>
-            <pre class="pp-automation-log-pre mt-3">{{ json_encode($item->metadata['pipeline'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}</pre>
+            <pre class="pp-automation-log-pre mt-3">{{ json_encode($displayMetadata['pipeline'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}</pre>
         </details>
     @endif
 
-    @if(!empty($item->metadata['generation_steps']))
+    @if(!empty($displayMetadata['generation_steps']))
         <details class="pp-automation-log-panel">
-            <summary>Generation steps ({{ count($item->metadata['generation_steps']) }})</summary>
+            <summary>Generation steps ({{ count($displayMetadata['generation_steps']) }})</summary>
             <div class="space-y-3 mt-4">
-                @foreach($item->metadata['generation_steps'] as $log)
+                @foreach($displayMetadata['generation_steps'] as $log)
                     <div class="pp-automation-log-entry">
                         <div class="flex flex-wrap gap-2 items-center mb-3">
                             <span class="pp-automation-step-badge">{{ $log['step'] ?? 'step' }}</span>
-                            @if(!empty($log['provider']))<span class="pp-automation-badge">{{ $log['provider'] }}</span>@endif
+                            @if(\App\Support\AiDiagnostics::visible() && !empty($log['provider']))<span class="pp-automation-badge">{{ $log['provider'] }}</span>@endif
                             @if(!empty($log['duration_ms']))<span class="text-xs text-[#737686]">{{ $log['duration_ms'] }}ms</span>@endif
                         </div>
                         @if(!empty($log['system_prompt']))

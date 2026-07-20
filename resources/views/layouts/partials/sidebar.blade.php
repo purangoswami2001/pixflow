@@ -1,5 +1,9 @@
 @php
     $user = auth()->user();
+    $currentOrganization = $currentOrganization ?? $user?->currentOrganization;
+    $userOrganizations = $user
+        ? $user->organizations()->wherePivot('status', 'active')->orderBy('name')->get()
+        : collect();
 
     $mainNav = [
         ['route' => 'dashboard', 'icon' => 'dashboard', 'label' => 'Dashboard', 'match' => ['dashboard']],
@@ -17,6 +21,7 @@
         ['route' => 'admin.schedule', 'icon' => 'schedule', 'label' => 'Queue Schedule', 'match' => ['admin.schedule', 'admin.schedule.*']],
         ['route' => 'admin.automation.index', 'icon' => 'smart_toy', 'label' => 'AI Automation', 'match' => ['admin.automation.*']],
         ['route' => 'admin.logs', 'icon' => 'terminal', 'label' => 'System Logs', 'match' => ['admin.logs', 'admin.logs.*']],
+        ['route' => 'admin.settings', 'icon' => 'tune', 'label' => 'Firm Settings', 'match' => ['admin.settings', 'admin.settings.*']],
     ];
 
     $automationTabs = [
@@ -45,9 +50,29 @@
             </div>
             <div class="min-w-0">
                 <h1 class="font-display text-white text-lg font-semibold leading-none truncate">PixFlow</h1>
-                <p class="text-[10px] text-[#737686] tracking-wider uppercase mt-1">Social Scheduler</p>
+                <p class="text-[10px] text-[#737686] tracking-wider uppercase mt-1 truncate">{{ $currentOrganization?->name ?? 'Social Scheduler' }}</p>
             </div>
         </a>
+
+        @if($userOrganizations->count() > 1)
+            <div class="mt-4 space-y-1">
+                <p class="text-[10px] uppercase tracking-wider text-[#737686] px-1">Switch firm</p>
+                @foreach($userOrganizations as $organization)
+                    @if((int) $organization->id === (int) ($currentOrganization?->id))
+                        <div class="px-3 py-2 rounded-lg bg-white/10 text-white text-xs font-semibold truncate">
+                            {{ $organization->name }}
+                        </div>
+                    @else
+                        <form method="POST" action="{{ route('organizations.switch', $organization) }}">
+                            @csrf
+                            <button type="submit" class="w-full text-left px-3 py-2 rounded-lg text-[#c3c6d7] hover:bg-white/5 hover:text-white text-xs truncate">
+                                {{ $organization->name }}
+                            </button>
+                        </form>
+                    @endif
+                @endforeach
+            </div>
+        @endif
     </div>
 
     {{-- Navigation --}}

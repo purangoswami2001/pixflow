@@ -6,9 +6,17 @@ use App\Models\PromptTemplate;
 
 class PromptTemplateRenderer
 {
-    public function render(string $platform, string $step, array $variables): string
+    public function render(
+        string $platform,
+        string $step,
+        array $variables,
+        ?int $organizationId = null,
+    ): string
     {
+        $organizationId ??= app(\App\Support\OrganizationContext::class)->id();
+
         $template = PromptTemplate::query()
+            ->when($organizationId, fn ($query) => $query->where('organization_id', $organizationId))
             ->where('platform', $platform)
             ->where('step', $step)
             ->where('is_active', true)
@@ -18,6 +26,7 @@ class PromptTemplateRenderer
 
         if (! $template) {
             $template = PromptTemplate::query()
+                ->when($organizationId, fn ($query) => $query->where('organization_id', $organizationId))
                 ->where('platform', 'all')
                 ->where('step', $step)
                 ->where('is_active', true)

@@ -14,9 +14,10 @@ use Illuminate\Support\Facades\Storage;
 
 class PostTarget extends Model
 {
-    use HasFactory;
+    use Concerns\BelongsToOrganization, HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'post_id',
         'social_account_id',
         'social_destination_id',

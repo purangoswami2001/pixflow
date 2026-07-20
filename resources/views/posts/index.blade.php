@@ -211,8 +211,8 @@
                             {{ $post->caption }}
                         </p>
 
-                        @if($isAdmin && $post->user)
-                            <p class="text-[9px] text-[#737686] mt-1 truncate">by {{ $post->user->name }}</p>
+                        @if($isAdmin)
+                            <p class="text-[9px] text-[#737686] mt-1 truncate">by {{ $post->authorLabel() }}</p>
                         @endif
 
                         @if($status === 'approved' && $scheduleInfo)

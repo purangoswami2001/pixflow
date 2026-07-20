@@ -2,33 +2,41 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Models\Post;
 use App\Models\PostTarget;
 use App\Models\SocialAccount;
 use App\Models\PublishLog;
-use App\Models\User;
 use App\Enums\PostStatus;
 use App\Enums\ProviderType;
 use App\Services\Posts\QueueScheduleCalculatorService;
 
 class DashboardController extends Controller
 {
+    use ResolvesOrganization;
+
     public function index(QueueScheduleCalculatorService $calculator)
     {
         $user = auth()->user();
         $isAdmin = $user->isAdmin();
+        $organizationId = $this->currentOrganizationId();
 
         $calculator->refreshAllQueuedSchedules();
 
-        $postQuery = fn () => Post::query()->when(! $isAdmin, fn ($q) => $q->where('user_id', $user->id));
+        $postQuery = fn () => Post::query()
+            ->forOrganization($organizationId)
+            ->when(! $isAdmin, fn ($q) => $q->where('user_id', $user->id));
 
-        $targetQuery = fn () => PostTarget::query()->whereHas(
-            'post',
-            fn ($q) => $q->when(! $isAdmin, fn ($pq) => $pq->where('user_id', $user->id))
-        );
+        $targetQuery = fn () => PostTarget::query()
+            ->forOrganization($organizationId)
+            ->whereHas(
+                'post',
+                fn ($q) => $q->forOrganization($organizationId)
+                    ->when(! $isAdmin, fn ($pq) => $pq->where('user_id', $user->id))
+            );
 
-        $adminIds = User::role('admin')->pluck('id');
-        $connectedAccountsCount = SocialAccount::whereIn('user_id', $adminIds)
+        $connectedAccountsCount = SocialAccount::query()
+            ->forOrganization($organizationId)
             ->where('status', 'active')
             ->count();
 
@@ -58,7 +66,9 @@ class DashboardController extends Controller
             ->get();
 
         $recentLogs = PublishLog::with(['postTarget.post', 'postTarget.socialAccount'])
-            ->whereHas('postTarget.post', fn ($q) => $q->when(! $isAdmin, fn ($pq) => $pq->where('user_id', $user->id)))
+            ->forOrganization($organizationId)
+            ->whereHas('postTarget.post', fn ($q) => $q->forOrganization($organizationId)
+                ->when(! $isAdmin, fn ($pq) => $pq->where('user_id', $user->id)))
             ->orderBy('created_at', 'desc')
             ->take(6)
             ->get();

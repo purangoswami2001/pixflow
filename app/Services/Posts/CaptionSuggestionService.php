@@ -4,6 +4,7 @@ namespace App\Services\Posts;
 
 use App\Exceptions\AiGenerationException;
 use App\Services\Ai\AiConfig;
+use App\Services\Ai\AiTextService;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -22,14 +23,50 @@ class CaptionSuggestionService
     }
 
     $apiKey = AiConfig::apiKey();
-    if ($apiKey !== null) {
+    if ($apiKey !== null && AiConfig::provider() !== 'cursor') {
       return match (AiConfig::provider()) {
         'gemini' => $this->getGeminiSuggestion($brief, $platform, $category, $apiKey),
         default => $this->getOpenAiSuggestion($brief, $platform, $category, $apiKey),
       };
     }
 
+    $providers = AiConfig::textProviders();
+    if ($providers !== []) {
+      return $this->getAiTextSuggestion($brief, $platform, $category, $providers);
+    }
+
     return $this->getTemplateSuggestion($brief, $platform, $category);
+  }
+
+  /**
+   * @param  list<string>  $providers
+   */
+  protected function getAiTextSuggestion(string $brief, string $platform, string $category, array $providers): array
+  {
+    try {
+      $data = app(AiTextService::class)->generateJson(
+        'You are a professional social media copywriter. Always respond with valid JSON.',
+        $this->buildPrompt($brief, $platform, $category),
+        $providers,
+      );
+
+      $provider = (string) ($data['_provider'] ?? 'ai');
+      unset($data['_provider']);
+
+      $normalized = $this->normalizeAiResult($data, $brief, $platform, $category);
+      if ($normalized === null) {
+        throw new AiGenerationException('AI returned an empty or invalid response. Try again.');
+      }
+
+      $normalized['source'] = $provider;
+
+      return $normalized;
+    } catch (AiGenerationException $e) {
+      throw $e;
+    } catch (\Throwable $e) {
+      Log::error('AI caption generation exception: '.$e->getMessage());
+      throw new AiGenerationException('Could not generate caption. Check your AI provider configuration.');
+    }
   }
 
   protected function getTemplateSuggestion(string $brief, string $platform, string $category): array

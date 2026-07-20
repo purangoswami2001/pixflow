@@ -7,17 +7,31 @@ use App\Models\ContentTopic;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
+/**
+ * Full 20-niche content pack. Prefer OrganizationSampleContentSeeder for new firms.
+ * Optional: php artisan db:seed --class=ContentLibrarySeeder
+ */
 class ContentLibrarySeeder extends Seeder
 {
-    public function run(): void
+    public function run(?int $organizationId = null): void
     {
+        $organizationId = $organizationId
+            ?? \App\Models\Organization::query()->orderBy('id')->value('id');
+
+        if (! $organizationId) {
+            return;
+        }
+
         $sort = 1;
 
         foreach ($this->categories() as $row) {
             $slug = $row['slug'] ?? Str::slug($row['name']);
 
             $category = ContentCategory::updateOrCreate(
-                ['slug' => $slug],
+                [
+                    'organization_id' => $organizationId,
+                    'slug' => $slug,
+                ],
                 [
                     'name' => $row['name'],
                     'niche_prompt' => $row['niche_prompt'],

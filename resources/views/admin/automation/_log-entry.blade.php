@@ -5,7 +5,7 @@
         @if(!empty($entry['context']['item_id']))
             <a href="{{ route('admin.automation.logs', ['item_id' => $entry['context']['item_id']]) }}" class="text-[#004ac6] font-semibold">#{{ $entry['context']['item_id'] }}</a>
         @endif
-        @if(!empty($entry['context']['provider']))
+        @if(\App\Support\AiDiagnostics::visible() && !empty($entry['context']['provider']))
             <span class="pp-automation-badge">{{ $entry['context']['provider'] }}</span>
         @endif
         @if(!empty($entry['context']['duration_ms']))

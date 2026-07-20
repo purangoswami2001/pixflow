@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\Posts\PostMediaArchiveService;
+use App\Support\OrganizationContext;
 
 class PostSchedulerService
 {
@@ -27,8 +28,17 @@ class PostSchedulerService
     public function createPost(User $user, array $data): Post
     {
         return DB::transaction(function () use ($user, $data) {
+            $organizationId = $data['organization_id']
+                ?? $user->current_organization_id
+                ?? app(OrganizationContext::class)->id();
+
+            if (! $organizationId) {
+                throw new \RuntimeException('Cannot create a post without an organization.');
+            }
+
             $post = Post::create([
                 'user_id' => $user->id,
+                'organization_id' => $organizationId,
                 'title' => $data['title'],
                 'caption' => $data['caption'] ?? null,
                 'status' => $data['is_draft'] ? PostStatus::DRAFT : ($data['status'] ?? PostStatus::SCHEDULED),
@@ -57,6 +67,7 @@ class PostSchedulerService
 
                 $target = PostTarget::create([
                     'post_id' => $post->id,
+                    'organization_id' => $organizationId,
                     'social_account_id' => $targetData['social_account_id'],
                     'social_destination_id' => $targetData['social_destination_id'],
                     'provider' => $targetData['provider'],
@@ -69,7 +80,9 @@ class PostSchedulerService
                     'status' => $targetStatus,
                 ]);
 
-                if ($mediaAssetId && ($asset = MediaAsset::find($mediaAssetId))) {
+                if ($mediaAssetId && ($asset = MediaAsset::query()
+                    ->where('organization_id', $organizationId)
+                    ->find($mediaAssetId))) {
                     $this->postMediaArchive->copyFromLibrary($target, $asset);
                 }
             }

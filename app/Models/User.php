@@ -2,20 +2,22 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-
 use Spatie\Permission\Traits\HasRoles;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Support\OrganizationContext;
 
-#[Fillable(['name', 'email', 'password', 'theme'])]
+#[Fillable(['name', 'email', 'password', 'theme', 'current_organization_id'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     public const THEME_LIGHT = 'light';
 
@@ -29,7 +31,7 @@ class User extends Authenticatable
     /**
      * Get the attributes that should be cast.
      *
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     protected function casts(): array
     {
@@ -62,6 +64,24 @@ class User extends Authenticatable
         return $pref;
     }
 
+    public function currentOrganization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class, 'current_organization_id');
+    }
+
+    public function organizations(): BelongsToMany
+    {
+        return $this->belongsToMany(Organization::class)
+            ->withPivot(['role', 'status'])
+            ->withTimestamps()
+            ->using(OrganizationMembership::class);
+    }
+
+    public function organizationMemberships(): HasMany
+    {
+        return $this->hasMany(OrganizationMembership::class);
+    }
+
     public function socialAccounts(): HasMany
     {
         return $this->hasMany(SocialAccount::class);
@@ -82,34 +102,85 @@ class User extends Authenticatable
         return $this->hasMany(InAppNotification::class);
     }
 
-    public function isAdmin(): bool
+    public function membershipFor(?Organization $organization = null): ?OrganizationMembership
     {
-        return $this->hasRole('admin');
-    }
+        $organizationId = $organization?->id
+            ?? app(OrganizationContext::class)->id()
+            ?? $this->current_organization_id;
 
-    public function roleLabel(): string
-    {
-        if ($this->isAdmin()) {
-            return 'Administrator';
+        if (! $organizationId) {
+            return null;
         }
 
-        if ($this->hasRole('creator')) {
-            return 'Creator';
+        return $this->organizationMemberships
+            ->first(fn (OrganizationMembership $membership) => (int) $membership->organization_id === (int) $organizationId
+                && $membership->status === OrganizationMembership::STATUS_ACTIVE)
+            ?? OrganizationMembership::query()
+                ->where('user_id', $this->id)
+                ->where('organization_id', $organizationId)
+                ->where('status', OrganizationMembership::STATUS_ACTIVE)
+                ->first();
+    }
+
+    public function organizationRole(?Organization $organization = null): ?string
+    {
+        return $this->membershipFor($organization)?->role;
+    }
+
+    /**
+     * Organization owner/admin for the active firm (or optional firm).
+     * Platform super-admins are separate and do not imply tenant admin rights.
+     */
+    public function isAdmin(?Organization $organization = null): bool
+    {
+        return $this->membershipFor($organization)?->isAdmin() ?? false;
+    }
+
+    public function isOrganizationOwner(?Organization $organization = null): bool
+    {
+        return $this->membershipFor($organization)?->isOwner() ?? false;
+    }
+
+    public function isPlatformAdmin(): bool
+    {
+        return $this->hasRole('super-admin');
+    }
+
+    public function belongsToOrganization(Organization|int $organization): bool
+    {
+        $organizationId = $organization instanceof Organization ? $organization->id : $organization;
+
+        return OrganizationMembership::query()
+            ->where('user_id', $this->id)
+            ->where('organization_id', $organizationId)
+            ->where('status', OrganizationMembership::STATUS_ACTIVE)
+            ->exists();
+    }
+
+    public function roleLabel(?Organization $organization = null): string
+    {
+        $role = $this->organizationRole($organization);
+
+        if ($role) {
+            return OrganizationMembership::roleLabel($role);
+        }
+
+        if ($this->isPlatformAdmin()) {
+            return 'Platform Admin';
         }
 
         return 'User';
     }
 
-    public function roleBadgeClass(): string
+    public function roleBadgeClass(?Organization $organization = null): string
     {
-        if ($this->isAdmin()) {
-            return 'pp-sidebar-role--admin';
-        }
+        $role = $this->organizationRole($organization);
 
-        if ($this->hasRole('creator')) {
-            return 'pp-sidebar-role--creator';
-        }
-
-        return 'pp-sidebar-role--user';
+        return match ($role) {
+            OrganizationMembership::ROLE_OWNER,
+            OrganizationMembership::ROLE_ADMIN => 'pp-sidebar-role--admin',
+            OrganizationMembership::ROLE_CREATOR => 'pp-sidebar-role--creator',
+            default => 'pp-sidebar-role--user',
+        };
     }
 }

@@ -46,6 +46,13 @@ if (! function_exists('resolveApplicationBasePath')) {
             }
         }
 
+        // Shared hosting may rewrite /subdir/public/index.php to /index.php
+        // while retaining the original browser path in REQUEST_URI.
+        if ($fromScript === ''
+            && preg_match('#^(.*/public)(?:/|$)#', $requestUri, $matches)) {
+            return rtrim($matches[1], '/');
+        }
+
         return $fromScript;
     }
 

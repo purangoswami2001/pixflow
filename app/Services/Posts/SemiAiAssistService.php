@@ -4,6 +4,7 @@ namespace App\Services\Posts;
 
 use App\Models\ContentCategory;
 use App\Models\MediaAsset;
+use App\Support\OrganizationContext;
 use App\Services\Automation\PromptTemplateRenderer;
 use App\Services\Media\ImageMetadataService;
 use App\Services\Media\MediaConfigService;
@@ -198,9 +199,15 @@ class SemiAiAssistService
             return null;
         }
 
-        return ContentCategory::query()
-            ->where('is_active', true)
-            ->find($categoryId);
+        $query = ContentCategory::query()
+            ->where('is_active', true);
+
+        $organizationId = app(OrganizationContext::class)->id();
+        if ($organizationId) {
+            $query->where('organization_id', $organizationId);
+        }
+
+        return $query->find($categoryId);
     }
 
     /**
@@ -216,6 +223,7 @@ class SemiAiAssistService
         string $userName,
         int $userId,
         array $extraTags = [],
+        ?int $organizationId = null,
     ): MediaAsset {
         $availablePresets = collect(
             $this->mediaConfig->presetsForChannelAndType($channel, $mediaType)
@@ -293,6 +301,7 @@ class SemiAiAssistService
         }
 
         return MediaAsset::create([
+            'organization_id' => $organizationId ?? auth()->user()?->current_organization_id,
             'user_id' => $userId,
             'file_path' => $path,
             'disk' => 'public',

@@ -9,9 +9,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PublishLog extends Model
 {
-    use HasFactory;
+    use Concerns\BelongsToOrganization, HasFactory;
 
     protected $fillable = [
+        'organization_id',
         'post_target_id',
         'provider',
         'status',

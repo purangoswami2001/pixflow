@@ -159,7 +159,9 @@ class PlatformPostFieldsService
     public function buildPinterestApiPayload(PostTarget $target, array $mediaSource): array
     {
         $post = $target->post;
-        $destination = $target->socialDestination;
+        $destination = $target->relationLoaded('socialDestination')
+            ? $target->socialDestination
+            : ($target->exists ? $target->socialDestination : null);
         $platform = $target->platform_payload ?? [];
 
         $payload = [

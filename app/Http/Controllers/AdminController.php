@@ -2,36 +2,71 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
+use App\Http\Controllers\Concerns\ResolvesOrganization;
+use App\Models\OrganizationMembership;
 use App\Models\PublishLog;
+use App\Models\QueueSlot;
+use App\Models\PostTarget;
 use App\Models\SocialAccount;
+use App\Models\User;
+use App\Services\Organizations\OrganizationService;
 use App\Services\Posts\QueueScheduleCalculatorService;
 use App\Services\Media\MediaConfigService;
-use Spatie\Permission\Models\Role;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class AdminController extends Controller
 {
+    use ResolvesOrganization;
+
     // Middleware check moved to web.php route definition
 
     public function users()
     {
-        $users = User::with(['roles', 'socialAccounts', 'posts'])->get();
+        $organization = $this->currentOrganization();
+        $organizationId = $organization->id;
+
+        $users = User::query()
+            ->whereHas('organizationMemberships', fn ($q) => $q
+                ->where('organization_id', $organizationId)
+                ->where('status', OrganizationMembership::STATUS_ACTIVE))
+            ->with([
+                'organizationMemberships' => fn ($q) => $q->where('organization_id', $organizationId),
+                'socialAccounts' => fn ($q) => $q->where('organization_id', $organizationId),
+                'posts' => fn ($q) => $q->where('organization_id', $organizationId),
+            ])
+            ->orderBy('name')
+            ->get();
+
+        $invitations = $organization->invitations()
+            ->whereNull('accepted_at')
+            ->orderByDesc('created_at')
+            ->get();
 
         return view('admin.users', [
             'users' => $users,
+            'invitations' => $invitations,
+            'organization' => $organization,
         ]);
     }
 
-    public function updateUser(Request $request, $id)
+    public function updateUser(Request $request, $id, OrganizationService $organizations)
     {
-        $user = User::findOrFail($id);
+        $organization = $this->currentOrganization();
+        $member = User::query()
+            ->whereHas('organizationMemberships', fn ($q) => $q
+                ->where('organization_id', $organization->id)
+                ->where('status', OrganizationMembership::STATUS_ACTIVE))
+            ->findOrFail($id);
+
+        $membership = $member->membershipFor($organization);
+        abort_unless($membership, 404);
 
         $rules = [
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email,' . $id,
-            'role' => 'required|in:admin,creator',
+            'email' => 'required|string|email|max:255|unique:users,email,'.$id,
+            'role' => 'required|in:owner,admin,creator',
         ];
 
         if ($request->filled('password')) {
@@ -40,41 +75,69 @@ class AdminController extends Controller
 
         $request->validate($rules);
 
-        if ($id == auth()->id() && $request->role !== 'admin') {
-            return redirect()->back()->with('error', 'You cannot remove your own admin role.');
+        if ($membership->isOwner() && $request->role !== OrganizationMembership::ROLE_OWNER && $member->id === auth()->id()) {
+            return redirect()->back()->with('error', 'Transfer ownership before demoting yourself.');
         }
 
-        $user->name = $request->name;
-        $user->email = $request->email;
+        $member->name = $request->name;
+        $member->email = $request->email;
 
         if ($request->filled('password')) {
-            $user->password = Hash::make($request->password);
+            $member->password = Hash::make($request->password);
         }
 
-        $user->save();
+        $member->save();
 
-        Role::findOrCreate($request->role);
-        $user->syncRoles([$request->role]);
+        try {
+            $organizations->updateMemberRole(
+                $organization,
+                auth()->user(),
+                $member,
+                $request->role,
+            );
+        } catch (ValidationException $e) {
+            return redirect()->back()->withErrors($e->errors());
+        }
 
-        return redirect()->back()->with('status', "User {$user->name} updated successfully.");
+        return redirect()->back()->with('status', "Member {$member->name} updated successfully.");
     }
 
-    public function deleteUser($id)
+    public function revokeInvitation($id)
     {
-        if ($id == auth()->id()) {
-            return redirect()->back()->with('error', 'You cannot delete your own account.');
+        $invitation = $this->currentOrganization()
+            ->invitations()
+            ->whereNull('accepted_at')
+            ->findOrFail($id);
+
+        $email = $invitation->email;
+        $invitation->delete();
+
+        return redirect()->back()->with('status', "Invitation for {$email} revoked.");
+    }
+
+    public function deleteUser($id, OrganizationService $organizations)
+    {
+        $organization = $this->currentOrganization();
+        $member = User::query()
+            ->whereHas('organizationMemberships', fn ($q) => $q
+                ->where('organization_id', $organization->id)
+                ->where('status', OrganizationMembership::STATUS_ACTIVE))
+            ->findOrFail($id);
+
+        try {
+            $organizations->removeMember($organization, auth()->user(), $member);
+        } catch (ValidationException $e) {
+            return redirect()->back()->withErrors($e->errors());
         }
 
-        $user = User::findOrFail($id);
-        $user->delete();
-
-        return redirect()->back()->with('status', 'User account deleted successfully.');
+        return redirect()->back()->with('status', 'Member removed from this firm.');
     }
 
     public function logs(Request $request)
     {
         $filter = $request->query('status', 'all');
         $query = PublishLog::with(['postTarget.post', 'postTarget.socialAccount.user'])
+            ->forCurrentOrganization()
             ->orderBy('created_at', 'desc');
 
         if ($filter !== 'all') {
@@ -85,7 +148,9 @@ class AdminController extends Controller
 
         $selectedLog = null;
         if ($request->query('selected_log')) {
-            $selectedLog = PublishLog::find($request->query('selected_log'));
+            $selectedLog = PublishLog::query()
+                ->forCurrentOrganization()
+                ->find($request->query('selected_log'));
         }
 
         return view('admin.logs', [
@@ -97,40 +162,48 @@ class AdminController extends Controller
 
     public function clearLogs()
     {
-        PublishLog::truncate();
+        PublishLog::query()->forCurrentOrganization()->delete();
+
         return redirect()->route('admin.logs')->with('status', 'Publish logs cleared successfully.');
     }
 
-    public function storeUser(Request $request)
+    public function storeUser(Request $request, OrganizationService $organizations)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8',
+            'email' => 'required|string|email|max:255',
             'role' => 'required|in:admin,creator',
         ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => \Illuminate\Support\Facades\Hash::make($request->password),
-        ]);
+        $organization = $this->currentOrganization();
 
-        // Dynamically assign Spatie role (ensuring roles exist)
-        Role::findOrCreate($request->role);
-        $user->assignRole($request->role);
+        try {
+            $invitation = $organizations->invite(
+                $organization,
+                auth()->user(),
+                $request->email,
+                $request->role === 'admin'
+                    ? OrganizationMembership::ROLE_ADMIN
+                    : OrganizationMembership::ROLE_CREATOR,
+            );
+        } catch (ValidationException $e) {
+            return redirect()->back()->withErrors($e->errors());
+        }
 
-        return redirect()->back()->with('status', "User {$user->name} created successfully with role {$request->role}.");
+        $inviteUrl = route('organizations.invitations.show', $invitation->token);
+
+        return redirect()->back()->with(
+            'status',
+            "Invitation ready for {$invitation->email}. Share this link: {$inviteUrl}"
+        );
     }
 
     public function schedule(Request $request, MediaConfigService $mediaConfig)
     {
-        $adminIds = User::role('admin')->pluck('id');
         $channelFilter = $request->query('channel', 'all');
 
         $accounts = SocialAccount::query()
+            ->forCurrentOrganization()
             ->where('status', 'active')
-            ->whereIn('user_id', $adminIds)
             ->orderBy('provider')
             ->orderBy('name')
             ->get();
@@ -159,9 +232,8 @@ class AdminController extends Controller
 
     public function scheduleAccount(Request $request, $accountId, QueueScheduleCalculatorService $calculator, MediaConfigService $mediaConfig)
     {
-        $adminIds = User::role('admin')->pluck('id');
         $account = SocialAccount::query()
-            ->whereIn('user_id', $adminIds)
+            ->forCurrentOrganization()
             ->where('status', 'active')
             ->findOrFail($accountId);
 
@@ -197,7 +269,9 @@ class AdminController extends Controller
         $queueSlots = collect();
 
         if ($destination) {
-            $queueSlots = \App\Models\QueueSlot::where('social_destination_id', $destination->id)
+            $queueSlots = QueueSlot::query()
+                ->forCurrentOrganization()
+                ->where('social_destination_id', $destination->id)
                 ->get()
                 ->sortBy(function ($slot) {
                     $day = (int) $slot->day_of_week === 0 ? 7 : (int) $slot->day_of_week;
@@ -243,8 +317,12 @@ class AdminController extends Controller
     {
         $request->validate(['account_id' => 'required|integer|exists:social_accounts,id']);
 
+        $account = SocialAccount::query()
+            ->forCurrentOrganization()
+            ->findOrFail((int) $request->account_id);
+
         return response()->json([
-            'posts' => $calculator->queuedPostsForAccount((int) $request->account_id),
+            'posts' => $calculator->queuedPostsForAccount($account->id),
         ]);
     }
 
@@ -256,8 +334,13 @@ class AdminController extends Controller
             'schedule_date' => 'required|date|after_or_equal:today',
         ]);
 
-        $slot = \App\Models\QueueSlot::findOrFail($request->queue_slot_id);
-        $target = \App\Models\PostTarget::with('post')->findOrFail($request->post_target_id);
+        $slot = QueueSlot::query()
+            ->forCurrentOrganization()
+            ->findOrFail($request->queue_slot_id);
+        $target = PostTarget::query()
+            ->forCurrentOrganization()
+            ->with('post')
+            ->findOrFail($request->post_target_id);
 
         abort_unless($target->social_destination_id === $slot->social_destination_id, 422);
         abort_unless($target->status === \App\Enums\PostStatus::SCHEDULED, 422);
@@ -282,7 +365,9 @@ class AdminController extends Controller
 
     public function releaseManualSchedule($targetId, QueueScheduleCalculatorService $calculator)
     {
-        $target = \App\Models\PostTarget::findOrFail($targetId);
+        $target = PostTarget::query()
+            ->forCurrentOrganization()
+            ->findOrFail($targetId);
         abort_unless($target->schedule_mode === \App\Enums\ScheduleMode::MANUAL, 422);
 
         $calculator->releaseManualPost($target);
@@ -295,16 +380,21 @@ class AdminController extends Controller
         $request->validate([
             'social_account_id' => 'required|exists:social_accounts,id',
             'post_target_id' => 'required|exists:post_targets,id',
-            'schedule_date' => 'required|date|after_or_equal:today|before_or_equal:' . now()->addDays(30)->format('Y-m-d'),
+            'schedule_date' => 'required|date|after_or_equal:today|before_or_equal:'.now()->addDays(30)->format('Y-m-d'),
             'time' => 'required',
             'timezone' => 'required|string|max:64',
         ]);
 
-        $account = SocialAccount::findOrFail($request->social_account_id);
+        $account = SocialAccount::query()
+            ->forCurrentOrganization()
+            ->findOrFail($request->social_account_id);
         $destination = $account->primaryDestination();
         abort_unless($destination, 422, 'Account is not ready for scheduling.');
 
-        $target = \App\Models\PostTarget::with('post')->findOrFail($request->post_target_id);
+        $target = PostTarget::query()
+            ->forCurrentOrganization()
+            ->with('post')
+            ->findOrFail($request->post_target_id);
         abort_unless($target->social_destination_id === $destination->id, 422);
         abort_unless($target->status === \App\Enums\PostStatus::SCHEDULED, 422);
         abort_unless($target->post->status === \App\Enums\PostStatus::APPROVED, 422);
@@ -337,14 +427,18 @@ class AdminController extends Controller
             'posts_per_slot' => 'required|integer|min:1|max:20',
         ]);
 
-        $account = SocialAccount::findOrFail($request->social_account_id);
+        $account = SocialAccount::query()
+            ->forCurrentOrganization()
+            ->findOrFail($request->social_account_id);
         $destination = $account->primaryDestination();
 
         if (! $destination) {
             return redirect()->back()->with('error', 'Account is not ready for scheduling. Try syncing the profile first.');
         }
 
-        $exists = \App\Models\QueueSlot::where('social_destination_id', $destination->id)
+        $exists = QueueSlot::query()
+            ->forCurrentOrganization()
+            ->where('social_destination_id', $destination->id)
             ->where('day_of_week', $request->day_of_week)
             ->where('time', \Carbon\Carbon::parse($request->time)->format('H:i:00'))
             ->exists();
@@ -356,7 +450,8 @@ class AdminController extends Controller
         }
 
         try {
-            $slot = \App\Models\QueueSlot::create([
+            $slot = QueueSlot::create([
+                'organization_id' => $this->currentOrganizationId(),
                 'social_destination_id' => $destination->id,
                 'day_of_week' => $request->day_of_week,
                 'time' => \Carbon\Carbon::parse($request->time)->format('H:i:00'),
@@ -389,7 +484,9 @@ class AdminController extends Controller
 
         $timeFormatted = \Carbon\Carbon::parse($request->time)->format('H:i:00');
 
-        $exists = \App\Models\QueueSlot::where('social_destination_id', $slot->social_destination_id)
+        $exists = QueueSlot::query()
+            ->forCurrentOrganization()
+            ->where('social_destination_id', $slot->social_destination_id)
             ->where('day_of_week', $request->day_of_week)
             ->where('time', $timeFormatted)
             ->where('id', '!=', $slot->id)
@@ -428,15 +525,12 @@ class AdminController extends Controller
             ->with('open_slots_modal', true);
     }
 
-    protected function findAdminQueueSlot(int $id): \App\Models\QueueSlot
+    protected function findAdminQueueSlot(int $id): QueueSlot
     {
-        $adminIds = User::role('admin')->pluck('id');
-        $slot = \App\Models\QueueSlot::with('socialDestination.socialAccount')->findOrFail($id);
-        $account = $slot->socialDestination?->socialAccount;
-
-        abort_unless($account && $adminIds->contains($account->user_id), 403);
-
-        return $slot;
+        return QueueSlot::query()
+            ->forCurrentOrganization()
+            ->with('socialDestination.socialAccount')
+            ->findOrFail($id);
     }
 
     protected function scheduleTimezones(): array

@@ -15,22 +15,24 @@
         </x-slot>
     </x-pp-page-header>
 
-    @if($pinterestSandbox)
-        <div class="pp-callout pp-callout--warning mb-4 sm:mb-5">
-            <span class="material-symbols-outlined pp-callout-icon shrink-0">info</span>
-            <div>
-                <p class="font-semibold mb-0.5">Pinterest Trial / Sandbox mode</p>
-                <p class="text-xs leading-relaxed opacity-90">Only boards visible to the <strong>API sandbox</strong> appear here. Trial apps must use Sandbox to publish.</p>
+    @if(config('app.debug'))
+        @if($pinterestSandbox)
+            <div class="pp-callout pp-callout--warning mb-4 sm:mb-5">
+                <span class="material-symbols-outlined pp-callout-icon shrink-0">info</span>
+                <div>
+                    <p class="font-semibold mb-0.5">Pinterest Trial / Sandbox mode</p>
+                    <p class="text-xs leading-relaxed opacity-90">Only boards visible to the <strong>API sandbox</strong> appear here. Trial apps must use Sandbox to publish.</p>
+                </div>
             </div>
-        </div>
-    @else
-        <div class="pp-callout mb-4 sm:mb-5" style="border-color: color-mix(in srgb, #10b981 28%, transparent); background: color-mix(in srgb, #10b981 10%, var(--pp-surface));">
-            <span class="material-symbols-outlined pp-callout-icon shrink-0" style="color:#059669">verified</span>
-            <div>
-                <p class="font-semibold mb-0.5">Pinterest Live mode</p>
-                <p class="text-xs leading-relaxed opacity-90">Publishing uses <code>api.pinterest.com</code>. Your app needs <strong>Standard access</strong>.</p>
+        @else
+            <div class="pp-callout mb-4 sm:mb-5" style="border-color: color-mix(in srgb, #10b981 28%, transparent); background: color-mix(in srgb, #10b981 10%, var(--pp-surface));">
+                <span class="material-symbols-outlined pp-callout-icon shrink-0" style="color:#059669">verified</span>
+                <div>
+                    <p class="font-semibold mb-0.5">Pinterest Live mode</p>
+                    <p class="text-xs leading-relaxed opacity-90">Publishing uses <code>api.pinterest.com</code>. Your app needs <strong>Standard access</strong>.</p>
+                </div>
             </div>
-        </div>
+        @endif
     @endif
 
     @if($loadError)
@@ -50,7 +52,7 @@
                 <span class="material-symbols-outlined">dashboard</span>
                 <h3>No boards found</h3>
                 <p>
-                    @if($pinterestSandbox)
+                    @if(config('app.debug') && $pinterestSandbox)
                         Create a board in the Pinterest sandbox environment, then click Refresh.
                     @else
                         Create a board on Pinterest, then click Refresh.

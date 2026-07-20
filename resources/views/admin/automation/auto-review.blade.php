@@ -14,7 +14,7 @@
                 <div class="pp-auto-metric-icon"><span class="material-symbols-outlined">smart_toy</span></div>
                 <p class="pp-auto-metric-label">Agent</p>
                 <p class="pp-auto-metric-value" style="font-size:1.25rem">{{ $enabled ? 'On' : 'Off' }}</p>
-                <p class="pp-auto-metric-sub">AUTO_REVIEW_ENABLED</p>
+                <p class="pp-auto-metric-sub">{{ config('app.debug') ? 'AUTO_REVIEW_ENABLED' : 'Auto review agent' }}</p>
             </div>
             <div class="pp-auto-metric pp-auto-metric--amber">
                 <div class="pp-auto-metric-accent"></div>
@@ -54,7 +54,11 @@
                 <div class="pp-auto-card-head">
                     <div>
                         <p class="pp-auto-card-head-title">Configuration</p>
-                        <p class="pp-auto-card-head-sub">Read from .env — change values and run <code class="text-[11px]">php artisan config:clear</code></p>
+                        @if(config('app.debug'))
+                            <p class="pp-auto-card-head-sub">Read from .env — change values and run <code class="text-[11px]">php artisan config:clear</code></p>
+                        @else
+                            <p class="pp-auto-card-head-sub">Managed by your platform administrator</p>
+                        @endif
                     </div>
                 </div>
                 <div class="pp-auto-review-config-grid">
@@ -77,7 +81,11 @@
                 </div>
                 @unless($enabled)
                     <div class="px-5 py-3 border-t border-[var(--pp-border-soft)] bg-amber-50 text-sm text-amber-900">
-                        Set <code class="text-xs">AUTO_REVIEW_ENABLED=true</code> in <code class="text-xs">.env</code>, then clear config cache to turn the agent on.
+                        @if(config('app.debug'))
+                            Set <code class="text-xs">AUTO_REVIEW_ENABLED=true</code> in <code class="text-xs">.env</code>, then clear config cache to turn the agent on.
+                        @else
+                            The auto review agent is turned off. Contact your platform administrator to enable it.
+                        @endif
                     </div>
                 @endunless
             </div>

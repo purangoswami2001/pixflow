@@ -2,7 +2,15 @@
 
 namespace App\Providers;
 
+use App\Models\OrganizationMembership;
+use App\Models\Post;
+use App\Models\SocialAccount;
+use App\Policies\OrganizationMembershipPolicy;
+use App\Policies\PostPolicy;
+use App\Policies\SocialAccountPolicy;
+use App\Support\OrganizationContext;
 use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -14,6 +22,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(\App\Services\Ai\Cursor\CursorCloudAgentsApi::class);
         $this->app->singleton(\App\Services\Ai\CursorApiClient::class);
+        $this->app->singleton(OrganizationContext::class);
     }
 
     public function boot(): void
@@ -27,7 +36,15 @@ class AppServiceProvider extends ServiceProvider
             return url()->current();
         });
 
-        \Illuminate\Support\Facades\Gate::define('manage-system', function ($user) {
+        Gate::policy(Post::class, PostPolicy::class);
+        Gate::policy(SocialAccount::class, SocialAccountPolicy::class);
+        Gate::policy(OrganizationMembership::class, OrganizationMembershipPolicy::class);
+
+        Gate::define('manage-system', function ($user) {
+            return $user->isPlatformAdmin();
+        });
+
+        Gate::define('manage-organization', function ($user) {
             return $user->isAdmin();
         });
     }

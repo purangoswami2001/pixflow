@@ -13,9 +13,15 @@ class AutomationPromptBundle
      *
      * @return array<string, mixed>
      */
-    public static function export(): array
+    public static function export(?int $organizationId = null): array
     {
-        $templates = PromptTemplate::orderBy('platform')->orderBy('step')->get()
+        $organizationId ??= app(OrganizationContext::class)->id();
+
+        $templates = PromptTemplate::query()
+            ->when($organizationId, fn ($query) => $query->where('organization_id', $organizationId))
+            ->orderBy('platform')
+            ->orderBy('step')
+            ->get()
             ->map(fn (PromptTemplate $t) => [
                 'id' => $t->id,
                 'platform' => $t->platform,
@@ -39,9 +45,12 @@ class AutomationPromptBundle
         ];
     }
 
-    public static function exportJson(int $flags = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE): string
+    public static function exportJson(
+        int $flags = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        ?int $organizationId = null,
+    ): string
     {
-        return json_encode(self::export(), $flags) ?: '{}';
+        return json_encode(self::export($organizationId), $flags) ?: '{}';
     }
 
     /**
@@ -49,8 +58,9 @@ class AutomationPromptBundle
      *
      * @return array{updated: int, errors: array<int, string>}
      */
-    public static function import(string $json): array
+    public static function import(string $json, ?int $organizationId = null): array
     {
+        $organizationId ??= app(OrganizationContext::class)->id();
         $decoded = json_decode($json, true);
         if (! is_array($decoded)) {
             throw ValidationException::withMessages([
@@ -94,9 +104,13 @@ class AutomationPromptBundle
             $model = null;
 
             if (! empty($data['id'])) {
-                $model = PromptTemplate::find($data['id']);
+                $model = PromptTemplate::query()
+                    ->when($organizationId, fn ($query) => $query->where('organization_id', $organizationId))
+                    ->find($data['id']);
             } else {
-                $model = PromptTemplate::where('platform', $data['platform'])
+                $model = PromptTemplate::query()
+                    ->when($organizationId, fn ($query) => $query->where('organization_id', $organizationId))
+                    ->where('platform', $data['platform'])
                     ->where('step', $data['step'])
                     ->first();
             }

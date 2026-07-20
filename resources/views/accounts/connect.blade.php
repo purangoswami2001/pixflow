@@ -105,10 +105,12 @@
                     <p>You'll be redirected to sign in and grant access. You can revoke it anytime.</p>
                 </div>
 
+                @if(config('app.debug'))
                 <div class="pp-connect-note is-meta" id="metaSetupNote">
                     <p class="pp-connect-note-title">Facebook / Instagram setup</p>
                     <p>Meta app must use the <strong>Manage everything on your Page</strong> use case. Enable <code>pages_manage_posts</code> in App Review before adding it to <code>FACEBOOK_OAUTH_SCOPES</code>. Instagram uses the same Meta app — whitelist the Facebook redirect URI once.</p>
                 </div>
+                @endif
 
                 <div class="pp-connect-note is-pinterest hidden" id="pinterestSetupNote">
                     <p class="pp-connect-note-title">Pinterest setup</p>

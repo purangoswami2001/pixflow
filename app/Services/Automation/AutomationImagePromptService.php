@@ -57,7 +57,7 @@ class AutomationImagePromptService
             'image_style' => $imageStyle,
             'color_palette' => $palette,
             'topic_type' => $topic->topic_type ?? 'educational',
-        ]));
+        ], $category->organization_id));
 
         if ($rendered !== '' && ! self::templateConflictsWithStyle($rendered, $imageStyle)) {
             $user = $rendered."\n\nImage style for this post (follow exactly): ".AutomationImageStyles::promptHint($imageStyle)
